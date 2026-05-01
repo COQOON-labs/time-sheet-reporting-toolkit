@@ -32,7 +32,7 @@ export { extractDailyOvertime } from './overtime.js';
 
 export { planSyncUrls, TIME_PATH_HINTS } from './sync-planner.js';
 
-export { diagnoseTimeEntries, buildDebugLog, type DiagRow, type DebugEntry } from './diagnostics.js';
+export { diagnoseTimeEntries, buildDebugLog, diagnoseOvertime, type DiagRow, type DebugEntry, type OvertimeDiagGroup } from './diagnostics.js';
 
 export {
   todayIso,

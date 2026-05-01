@@ -88,10 +88,17 @@ export function currentRange(): DateRange {
     case 'last-6-months': return { from: monthStart(y, m - 5), to: today };
     case 'this-year': return { from: `${y}-01-01`, to: today };
     case 'all': {
-      if (state.timeEntries.length === 0) return { from: '1970-01-01', to: today };
-      const first = state.timeEntries[0]!.date;
-      const last = state.timeEntries[state.timeEntries.length - 1]!.date;
-      return { from: first, to: last };
+      const dates: string[] = [];
+      for (const e of state.timeEntries) dates.push(e.date);
+      for (const o of state.dailyOvertime) dates.push(o.date);
+      if (dates.length === 0) return { from: '1970-01-01', to: today };
+      let min = dates[0]!;
+      let max = dates[0]!;
+      for (const d of dates) {
+        if (d < min) min = d;
+        if (d > max) max = d;
+      }
+      return { from: min, to: max };
     }
     case 'custom':
       return {

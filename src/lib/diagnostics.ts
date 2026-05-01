@@ -154,3 +154,165 @@ export function buildDebugLog(items: CapturedRequest[]): {
     entries: out.sort((a, b) => b.capturedAt - a.capturedAt),
   };
 }
+
+/**
+ * Per-day breakdown of every `timecards[]` entry we see, so we can sanity-
+ * check whether holidays / vacation / sick days are correctly handled by
+ * Personio's own `overtime.amount_minutes` field.
+ *
+ * Personio cards have these relevant fields:
+ *   - `is_off_day`            true on weekends / holidays / full vacation
+ *   - `state`                 'trackable' | 'non_trackable' | …
+ *   - `overtime.type`         'daily_overtime' | 'daily_deficit' | absent
+ *   - `time_off.items[].type` 'holiday' | 'vacation' | 'sick' | …
+ *   - `target_hours.effective_work_duration_minutes`  daily target
+ *
+ * The payload below groups by every combination so we can spot half-day
+ * vacations (time_off + overtime present) and unexpected card states.
+ */
+export type OvertimeDiagGroup = {
+  cardType: string;
+  overtimeType: string;
+  isOffDay: boolean | null;
+  state: string;
+  timeOffType: string;
+  count: number;
+  sumMinutes: number;
+  sampleDate: string | null;
+  sampleEmployeeId: string | null;
+  sampleCard: unknown;
+};
+
+/** Card where `time_off` *and* `overtime` are both populated (half-day vacation
+ *  / sick day with partial work). These are easy to mis-count. */
+export type SuspiciousOvertimeRow = {
+  date: string;
+  employeeId: string;
+  isOffDay: boolean;
+  timeOffType: string;
+  timeOffMinutes: number;
+  overtimeType: string;
+  overtimeMinutes: number;
+  targetMinutes: number | null;
+  workedMinutes: number | null;
+};
+
+export function diagnoseOvertime(items: CapturedRequest[]): {
+  totalCards: number;
+  totalMinutes: number;
+  groups: OvertimeDiagGroup[];
+  suspicious: SuspiciousOvertimeRow[];
+  unknownShapeSamples: unknown[];
+  byEmployee: Array<{ employeeId: string; cards: number; sumMinutes: number }>;
+} {
+  const groups = new Map<string, OvertimeDiagGroup>();
+  const unknown: unknown[] = [];
+  const suspicious: SuspiciousOvertimeRow[] = [];
+  const perEmp = new Map<string, { cards: number; sumMinutes: number }>();
+  let totalCards = 0;
+  let totalMinutes = 0;
+
+  for (const it of items) {
+    if (!it.bodyJson) continue;
+    const m = /\/timesheet\/(\d{3,})/.exec(it.url);
+    if (!m) continue;
+    const employeeId = m[1]!;
+    const body = it.bodyJson as Record<string, unknown>;
+    const cards = body.timecards;
+    if (!Array.isArray(cards)) continue;
+
+    for (const card of cards) {
+      if (!isPlainObject(card)) continue;
+      totalCards++;
+      const date = typeof card.date === 'string' ? card.date : null;
+      const cardType = typeof card.type === 'string' ? card.type : '(none)';
+      const isOffDay = typeof card.is_off_day === 'boolean' ? card.is_off_day : null;
+      const state = typeof card.state === 'string' ? card.state : '(none)';
+
+      // time_off shape
+      let timeOffType = '(none)';
+      let timeOffMinutes = 0;
+      const to = card.time_off;
+      if (isPlainObject(to)) {
+        const items = to.items;
+        if (Array.isArray(items) && items.length > 0 && isPlainObject(items[0])) {
+          const first = items[0] as Record<string, unknown>;
+          if (typeof first.type === 'string') timeOffType = first.type;
+        }
+        if (typeof to.aggregated_duration_minutes === 'number') {
+          timeOffMinutes = to.aggregated_duration_minutes;
+        }
+      }
+
+      // overtime shape
+      const ot = card.overtime;
+      let overtimeType = '(no overtime field)';
+      let minutes = 0;
+      if (isPlainObject(ot)) {
+        overtimeType = typeof ot.type === 'string' ? ot.type : '(no type)';
+        if (typeof ot.amount_minutes === 'number') {
+          minutes = ot.amount_minutes;
+          if (overtimeType === 'daily_deficit' && minutes > 0) minutes = -minutes;
+        } else if (ot.amount_minutes != null) {
+          unknown.push({ where: 'amount_minutes not number', sample: ot });
+        }
+      }
+      totalMinutes += minutes;
+
+      // Per-employee total
+      const e = perEmp.get(employeeId) ?? { cards: 0, sumMinutes: 0 };
+      e.cards++;
+      e.sumMinutes += minutes;
+      perEmp.set(employeeId, e);
+
+      // Suspicious: time_off AND overtime both populated → potential half-day issue
+      if (timeOffType !== '(none)' && overtimeType !== '(no overtime field)' && date) {
+        const target = isPlainObject(card.target_hours)
+          && typeof card.target_hours.effective_work_duration_minutes === 'number'
+          ? card.target_hours.effective_work_duration_minutes
+          : null;
+        let worked: number | null = null;
+        if (Array.isArray(card.periods)) {
+          worked = 0;
+          for (const p of card.periods) {
+            if (isPlainObject(p) && p.type === 'work' && typeof p.duration_in_minutes === 'number') {
+              worked += p.duration_in_minutes;
+            }
+          }
+        }
+        suspicious.push({
+          date, employeeId,
+          isOffDay: isOffDay === true,
+          timeOffType, timeOffMinutes,
+          overtimeType, overtimeMinutes: minutes,
+          targetMinutes: target,
+          workedMinutes: worked,
+        });
+      }
+
+      const key = `${cardType}|${overtimeType}|off=${isOffDay}|state=${state}|to=${timeOffType}`;
+      const prev = groups.get(key);
+      if (prev) {
+        prev.count++;
+        prev.sumMinutes += minutes;
+      } else {
+        groups.set(key, {
+          cardType, overtimeType, isOffDay, state, timeOffType,
+          count: 1, sumMinutes: minutes,
+          sampleDate: date, sampleEmployeeId: employeeId, sampleCard: card,
+        });
+      }
+    }
+  }
+
+  return {
+    totalCards,
+    totalMinutes,
+    groups: Array.from(groups.values()).sort((a, b) => Math.abs(b.sumMinutes) - Math.abs(a.sumMinutes)),
+    suspicious: suspicious.sort((a, b) => a.date.localeCompare(b.date)),
+    unknownShapeSamples: unknown.slice(0, 5),
+    byEmployee: Array.from(perEmp.entries())
+      .map(([employeeId, v]) => ({ employeeId, ...v }))
+      .sort((a, b) => Math.abs(b.sumMinutes) - Math.abs(a.sumMinutes)),
+  };
+}

@@ -10,7 +10,7 @@
 
 import {
   extractTimeEntries, extractDailyOvertime, getOwnEmployee, buildDebugLog,
-  diagnoseTimeEntries, planSyncUrls,
+  diagnoseTimeEntries, diagnoseOvertime, planSyncUrls,
 } from '../lib/attendance.js';
 import { download, stamp } from '../lib/format.js';
 import { STORAGE_KEYS } from '../lib/constants.js';
@@ -162,6 +162,7 @@ els.dashDebug.addEventListener('click', () => {
       detectedTimeEntries: state.timeEntries.length,
     },
     diagnostics: diagnoseTimeEntries(state.allItems),
+    overtimeDiagnostics: diagnoseOvertime(state.allItems),
     captures: log.entries,
   };
   download(JSON.stringify(payload, null, 2), `personio-debug-${stamp()}.json`, 'application/json');
