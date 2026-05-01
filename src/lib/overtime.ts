@@ -8,6 +8,7 @@
 
 import type { CapturedRequest } from './types.js';
 import { isPlainObject } from './walk.js';
+import { TIMESHEET_URL_RE } from './constants.js';
 
 /** One day's overtime/deficit for a given employee. */
 export type DailyOvertime = {
@@ -23,7 +24,7 @@ export function extractDailyOvertime(items: CapturedRequest[]): DailyOvertime[] 
   const byKey = new Map<string, DailyOvertime>();
   for (const it of items) {
     if (!it.bodyJson) continue;
-    const m = /\/timesheet\/(\d{3,})/.exec(it.url);
+    const m = TIMESHEET_URL_RE.exec(it.url);
     if (!m) continue;
     const employeeId = m[1]!;
     const body = it.bodyJson as Record<string, unknown>;

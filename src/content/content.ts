@@ -6,14 +6,17 @@
  *  2. Mount the floating "📊 Reporting" launcher button + sidepanel iframe.
  */
 
-import { MSG_NAMESPACE, type WindowMessage, type SyncResult, type CapturedRequest, type SyncRequest } from '../lib/types.js';
+import { MSG_NAMESPACE, type WindowMessage, type SyncResult, type CapturedRequest, type SyncRequest, toSyncRequest } from '../lib/types.js';
 import { categorize, uid } from '../lib/identify.js';
+import { utf8Bytes } from '../lib/format.js';
 
 // ---------- 1. Bridge postMessage -> background ----------
 window.addEventListener('message', (event: MessageEvent<WindowMessage>) => {
+  // Same-origin only — defense in depth against rogue iframes posting fake captures.
+  if (event.source !== window) return;
+  if (event.origin !== location.origin) return;
   const data = event.data;
   if (!data || data.source !== MSG_NAMESPACE || data.kind !== 'capture') return;
-  if (event.source !== window) return;
   chrome.runtime.sendMessage({ kind: 'capture', payload: data.payload }).catch(() => {
     // Service worker may be asleep; retry once.
     setTimeout(() => {
@@ -30,9 +33,8 @@ chrome.runtime.onMessage.addListener((msg: { kind: string; urls?: SyncRequest[] 
     const result: SyncResult = { fetched: 0, failed: 0, errors: [], details: [] };
     // Run sequentially to avoid overwhelming the server / triggering rate limits.
     for (const item of urls) {
-      const req = typeof item === 'string'
-        ? { url: item, method: 'GET' as const, body: undefined, headers: undefined }
-        : { url: item.url, method: (item.method ?? 'GET'), body: item.body, headers: item.headers };
+      const raw = toSyncRequest(item);
+      const req = { ...raw, method: raw.method ?? ('GET' as const) };
       const url = req.url;
       try {
         const headers: Record<string, string> = {
@@ -58,6 +60,7 @@ chrome.runtime.onMessage.addListener((msg: { kind: string; urls?: SyncRequest[] 
           body,
         });
         const text = await res.text();
+        const bytes = utf8Bytes(text);
         let bodyJson: unknown = null;
         try { bodyJson = JSON.parse(text); } catch { /* not JSON */ }
         const id = await uid(`SYNC ${req.method} ${url} ${Date.now()}`);
@@ -69,7 +72,7 @@ chrome.runtime.onMessage.addListener((msg: { kind: string; urls?: SyncRequest[] 
           capturedAt: Date.now(),
           category: categorize(url),
           bodyJson,
-          bytes: text.length,
+          bytes,
         };
         await chrome.runtime.sendMessage({ kind: 'capture', payload: captured });
 
@@ -88,7 +91,7 @@ chrome.runtime.onMessage.addListener((msg: { kind: string; urls?: SyncRequest[] 
           }
         }
         const ok = res.ok && bodyJson != null;
-        result.details.push({ url, status: res.status, bytes: text.length, arrays, rows, ok });
+        result.details.push({ url, status: res.status, bytes, arrays, rows, ok });
         if (ok) result.fetched += 1;
         else { result.failed += 1; result.errors.push(`${res.status} ${url}`); }
       } catch (err) {

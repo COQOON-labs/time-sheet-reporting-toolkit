@@ -7,6 +7,7 @@
 
 import { MSG_NAMESPACE, type CapturedRequest, type WindowMessage } from '../lib/types.js';
 import { categorize, uid } from '../lib/identify.js';
+import { utf8Bytes } from '../lib/format.js';
 
 declare global {
   interface Window {
@@ -91,7 +92,7 @@ declare global {
           capturedAt: Date.now(),
           category: categorize(url),
           bodyJson: json,
-          bytes: text.length,
+          bytes: utf8Bytes(text),
         });
       })
       .catch(() => void 0);
@@ -137,7 +138,7 @@ declare global {
         capturedAt: Date.now(),
         category: categorize(url),
         bodyJson: json,
-        bytes: text.length,
+        bytes: utf8Bytes(text),
       });
     });
     return origSend.call(this, body);
@@ -146,88 +147,5 @@ declare global {
   // Console marker so users can verify activation in DevTools (DEV builds only).
   if (import.meta.env.DEV) {
     console.info('%c[Reporting for Personio] interceptor installed', 'color:#7c3aed;font-weight:bold');
-  }
-
-  // ---- bootstrap scanner ----
-  // Personio bootstraps some data (incl. the project list) at page load,
-  // before the SPA fires any XHR. Scan the DOM and `window` after load for
-  // arrays of `{ id, name }` objects so we can resolve project ids → names
-  // even without an observable network request.
-  function scanBootstrap(): void {
-    if (!/personio\.(de|com)$/.test(location.hostname)) return;
-    const found: Array<{ where: string; data: unknown }> = [];
-    const HINT = /project|employee|person|people|trackable/i;
-
-    // 1) Inline <script> tags that look like JSON or assignments.
-    for (const s of Array.from(document.scripts)) {
-      const t = s.textContent;
-      if (!t || t.length < 50 || t.length > 2_000_000) continue;
-      if (!HINT.test(t)) continue;
-      const blocks = t.match(/[\[{][\s\S]{200,200000}?[}\]]/g);
-      if (!blocks) continue;
-      for (const b of blocks) {
-        if (!HINT.test(b)) continue;
-        try {
-          const parsed = JSON.parse(b);
-          found.push({ where: `inline-script[${s.src || 'embedded'}]`, data: parsed });
-        } catch { /* ignore */ }
-      }
-    }
-
-    // 2) Walk window for arrays whose objects look like { id, name } or
-    //    { id, first_name, last_name } and whose nearby keys mention
-    //    project / employee / person.
-    const seen = new WeakSet<object>();
-    function visit(v: unknown, path: string, depth: number): void {
-      if (depth > 6 || v == null) return;
-      if (typeof v !== 'object') return;
-      if (seen.has(v as object)) return;
-      seen.add(v as object);
-      if (Array.isArray(v)) {
-        if (v.length > 0 && v.length < 10000) {
-          const sample = v.slice(0, 5);
-          const isIdName = sample.every((x) => x && typeof x === 'object'
-            && 'id' in (x as object)
-            && ('name' in (x as object)
-              || 'first_name' in (x as object)
-              || 'firstName' in (x as object)
-              || 'display_name' in (x as object)
-              || 'displayName' in (x as object)));
-          if (isIdName && HINT.test(path)) {
-            found.push({ where: `window.${path}`, data: v });
-          }
-        }
-        if (v.length < 500) for (let i = 0; i < v.length; i++) visit(v[i], `${path}[${i}]`, depth + 1);
-        return;
-      }
-      const o = v as Record<string, unknown>;
-      const keys = Object.keys(o);
-      if (keys.length > 200) return;
-      for (const k of keys) {
-        if (/^_/.test(k)) continue;
-        try { visit(o[k], path ? `${path}.${k}` : k, depth + 1); } catch { /* getter that throws */ }
-      }
-    }
-    try { visit(window as unknown as Record<string, unknown>, '', 0); } catch { /* ignore */ }
-
-    if (found.length === 0) return;
-    void uid(`bootstrap ${location.href} ${Date.now()}`).then((id) => {
-      emit({
-        id,
-        url: `${location.origin}/__bootstrap__/index`,
-        method: 'GET',
-        status: 200,
-        capturedAt: Date.now(),
-        category: 'project-time',
-        bodyJson: { bootstrapHits: found },
-        bytes: 0,
-      });
-    });
-  }
-
-  if (document.readyState === 'complete') {
-    setTimeout(scanBootstrap, 1500);
-  } else {
-    window.addEventListener('load', () => setTimeout(scanBootstrap, 1500), { once: true });
   }
 })();

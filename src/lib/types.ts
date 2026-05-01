@@ -11,9 +11,9 @@ export type CapturedRequest = {
   capturedAt: number; // epoch ms
   /** Best-effort category derived from URL pathname. */
   category: string;
-  /** Pretty-printed JSON body if response was JSON, else null. */
-  bodyJson: unknown | null;
-  /** Size of response body in bytes. */
+  /** Parsed JSON body if response was JSON, else null. */
+  bodyJson: unknown;
+  /** UTF-8 byte size of response body. */
   bytes: number;
 };
 
@@ -23,19 +23,21 @@ export type WindowMessage = {
   payload: CapturedRequest;
 };
 
-export type SyncRequest =
-  | string
-  | { url: string; method?: 'GET' | 'POST'; body?: unknown; headers?: Record<string, string> };
+/**
+ * Replay-fetch instruction sent from the sidepanel to the content script.
+ * Always normalized to an object — string-only entries from older callers
+ * should be wrapped via `toSyncRequest()`.
+ */
+export type SyncRequest = {
+  url: string;
+  method?: 'GET' | 'POST';
+  body?: unknown;
+  headers?: Record<string, string>;
+};
 
-export type RuntimeMessage =
-  | { kind: 'open-sidepanel' }
-  | { kind: 'list'; limit?: number }
-  | { kind: 'list-result'; items: CapturedRequest[] }
-  | { kind: 'clear' }
-  | { kind: 'export' }
-  | { kind: 'export-result'; json: string }
-  | { kind: 'active-sync'; urls: SyncRequest[] }
-  | { kind: 'cs-fetch'; urls: SyncRequest[] };
+export function toSyncRequest(v: string | SyncRequest): SyncRequest {
+  return typeof v === 'string' ? { url: v, method: 'GET' } : v;
+}
 
 export type SyncResult = {
   fetched: number;

@@ -17,6 +17,7 @@ import { STORAGE_KEYS } from '../lib/constants.js';
 import { readPrefBool, writePrefBool } from '../lib/prefs.js';
 import { state, setState, buildNameToIdMap } from './state.js';
 import { send } from './messaging.js';
+import { $ } from './dom.js';
 import {
   wireDashboard,
   renderDashboard,
@@ -35,12 +36,6 @@ if (!DEV_UI) {
     .querySelectorAll<HTMLElement>('[data-dev-only]')
     .forEach((el) => el.classList.add('hidden'));
 }
-
-const $ = <T extends Element>(sel: string): T => {
-  const el = document.querySelector<T>(sel);
-  if (!el) throw new Error(`Missing element: ${sel}`);
-  return el;
-};
 
 const els = {
   status: $('#status') as HTMLParagraphElement,
@@ -112,10 +107,8 @@ async function refresh(): Promise<void> {
     timeEntries,
     dailyOvertime,
     ownEmployee,
-    nameToId: buildNameToIdMap(),
+    nameToId: buildNameToIdMap(timeEntries, ownEmployee),
   });
-  // buildNameToIdMap reads state, so we need a second pass once state is set.
-  setState({ nameToId: buildNameToIdMap() });
 
   syncDashboardFiltersFromState();
   renderDashboard();

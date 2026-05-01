@@ -14,13 +14,17 @@ import {
 
 import {
   filterEntries, sumHours, groupHoursBy, sortedHoursMap,
-  todayIso, exportEntriesCsv, planSyncUrls,
+  todayIso, exportEntriesCsv,
   type TimeEntry, type DateRange,
 } from '../lib/attendance.js';
 import { escapeHtml, fmtHours, fmtOvertime, download } from '../lib/format.js';
+import { BRAND, BRAND_RGBA_18 } from '../lib/constants.js';
 import { state, setState } from './state.js';
-import { send } from './messaging.js';
+import { $ } from './dom.js';
 import { buildReportHtml } from './report-html.js';
+import { wireSync, maybeAutoSync } from './sync-controller.js';
+
+export { onSyncDoneRegister } from './sync-controller.js';
 
 Chart.register(
   BarController, BarElement,
@@ -28,12 +32,6 @@ Chart.register(
   LinearScale, CategoryScale,
   Tooltip, Legend, Filler,
 );
-
-const $ = <T extends Element>(sel: string): T => {
-  const el = document.querySelector<T>(sel);
-  if (!el) throw new Error(`Missing element: ${sel}`);
-  return el;
-};
 
 const els = {
   quickFilters: $('#quick-filters') as HTMLElement,
@@ -65,8 +63,6 @@ const els = {
 
 let dashLineChart: Chart | null = null;
 let dashProjectChart: Chart | null = null;
-
-const AUTO_SYNC_INTERVAL_MS = 5 * 60 * 1000;
 
 // ---------- range computation ----------
 
@@ -199,8 +195,8 @@ function drawDashCharts(
       datasets: [{
         label: 'Hours',
         data: dates.map((d) => byDate.get(d) ?? 0),
-        borderColor: '#7c3aed',
-        backgroundColor: 'rgba(124,58,237,.18)',
+        borderColor: BRAND,
+        backgroundColor: BRAND_RGBA_18,
         fill: true, tension: 0.25, pointRadius: 2,
       }],
     },
@@ -216,7 +212,7 @@ function drawDashCharts(
     type: 'bar',
     data: {
       labels: top.map(([k]) => k),
-      datasets: [{ label: 'Hours', data: top.map(([, v]) => v), backgroundColor: '#7c3aed' }],
+      datasets: [{ label: 'Hours', data: top.map(([, v]) => v), backgroundColor: BRAND }],
     },
     options: {
       indexAxis: 'y',
@@ -276,53 +272,7 @@ function renderEntriesTable(entries: TimeEntry[]): void {
   }
 }
 
-// ---------- sync ----------
-
-async function runSync(opts: { silent?: boolean } = {}): Promise<void> {
-  if (state.syncInFlight) return;
-  const range = currentRange();
-  const urls = planSyncUrls(state.allItems, range.from, range.to);
-  if (urls.length === 0) {
-    if (!opts.silent) {
-      els.syncStatus.textContent =
-        'No time-tracking endpoints learned yet. Open Personio\'s Attendance or Project-Time page once so the extension can discover the URLs, then click Sync again.';
-      els.syncStatus.style.color = 'var(--amber)';
-    }
-    return;
-  }
-  setState({ syncInFlight: true, lastSyncUrls: urls });
-  els.dashSync.disabled = true;
-  els.syncStatus.style.color = '';
-  els.syncStatus.textContent =
-    `${opts.silent ? 'Auto-syncing' : 'Syncing'} ${urls.length} request(s) for ${range.from} → ${range.to}…`;
-  try {
-    const res = await send('active-sync', { urls });
-    const r = res.result;
-    setState({ lastSyncResult: r, lastAutoSyncAt: Date.now() });
-    els.syncStatus.style.color = r.failed > 0 ? 'var(--amber)' : 'var(--green)';
-    els.syncStatus.textContent =
-      `Sync done: ${r.fetched} ok, ${r.failed} failed` +
-      (r.errors.length ? ` — first error: ${r.errors[0]}` : '');
-    // Trigger global refresh — main.ts subscribes and re-renders.
-    onSyncDone();
-  } catch (err) {
-    els.syncStatus.style.color = 'var(--red)';
-    els.syncStatus.textContent = `Sync failed: ${String(err)}`;
-  } finally {
-    setState({ syncInFlight: false });
-    els.dashSync.disabled = false;
-  }
-}
-
-let syncDoneHandler: () => void = () => void 0;
-export function onSyncDoneRegister(fn: () => void): void { syncDoneHandler = fn; }
-function onSyncDone(): void { syncDoneHandler(); }
-
-function maybeAutoSync(force = false): void {
-  if (!els.dashAutoSync.checked) return;
-  if (!force && Date.now() - state.lastAutoSyncAt < AUTO_SYNC_INTERVAL_MS) return;
-  void runSync({ silent: true });
-}
+// ---------- sync (delegated to sync-controller) ----------
 
 // ---------- wiring ----------
 
@@ -392,22 +342,32 @@ export function wireDashboard(opts: {
       entries: filtered,
       overtimeMinutes: sumOvertimeMinutes(range, els.dashEmployee.value),
     });
-    const url = 'data:text/html;charset=utf-8,' + encodeURIComponent(html);
+    // Use a Blob URL instead of a `data:` URL: Blob URLs are scoped to the
+    // creating origin, never appear in the URL bar / history with the data
+    // payload, and don't bloat referrer logs.
+    const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
     if (typeof chrome !== 'undefined' && chrome.tabs?.create) {
       chrome.tabs.create({ url });
     } else {
       window.open(url, '_blank');
     }
+    // Revoke shortly after; the new tab has already loaded the resource.
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
   });
 
-  els.dashSync.addEventListener('click', () => { void runSync(); });
+  wireSync({
+    els: {
+      dashSync: els.dashSync,
+      dashAutoSync: els.dashAutoSync,
+      syncStatus: els.syncStatus,
+    },
+    getRange: currentRange,
+  });
+
+  // Persist the auto-sync preference (sync-controller owns the run-on-enable behavior).
   els.dashAutoSync.addEventListener('change', () => {
     opts.onAutoSyncChange(els.dashAutoSync.checked);
-    if (els.dashAutoSync.checked) void runSync({ silent: true });
   });
-
-  // Periodic auto-sync ticker.
-  setInterval(() => maybeAutoSync(false), 30_000);
 
   // initial: dates disabled because default preset is "this-month"
   els.dashFrom.disabled = true;

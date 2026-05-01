@@ -10,6 +10,17 @@ export function escapeHtml(s: string): string {
   }[c]!));
 }
 
+/** Quote a single CSV cell per RFC 4180. */
+export function escapeCsvCell(s: string): string {
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+/** UTF-8 byte length of a string (for accurate response-body sizing). */
+export function utf8Bytes(s: string): number {
+  // TextEncoder is available in service workers, content scripts and pages.
+  return new TextEncoder().encode(s).length;
+}
+
 /** YYYY-MM-DD stamp from current time, e.g. for filenames. */
 export function stamp(): string {
   return new Date().toISOString().slice(0, 10);
@@ -43,3 +54,4 @@ export function download(content: string, filename: string, mime: string): void 
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 5_000);
 }
+

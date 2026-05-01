@@ -15,6 +15,16 @@
         font-family: ui-monospace, monospace;
       }
       a { color: #7c3aed; }
+      .privacy {
+        margin-top: 12px;
+        padding: 8px 10px;
+        background: #f5f3ff;
+        border-left: 3px solid #7c3aed;
+        border-radius: 4px;
+        font-size: 12px;
+        color: #4b5563;
+      }
+      .privacy b { color: #4c1d95; }
     </style>
   </head>
   <body>
@@ -24,6 +34,11 @@
       <kbd>📊 Reporting</kbd> button in the bottom-right corner to open
       the reporting panel.
     </p>
-    <p>Captured requests are stored locally in your browser (IndexedDB).</p>
+    <div class="privacy">
+      <b>Privacy:</b> All captured data stays in your browser (IndexedDB)
+      and is automatically deleted after 90 days. Only Personio time-tracking
+      endpoints on <code>*.personio.de</code> / <code>*.personio.com</code>
+      are recorded — nothing is ever sent to a third party.
+    </div>
   </body>
 </html>

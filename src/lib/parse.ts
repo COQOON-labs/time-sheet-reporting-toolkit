@@ -143,3 +143,8 @@ export function safeStringify(v: unknown): string {
     return s ? s.slice(0, 5000) : '';
   } catch { return ''; }
 }
+
+/** Best-effort URL pathname extraction with safe fallback. */
+export function safePathname(url: string): string {
+  try { return new URL(url).pathname; } catch { return url; }
+}

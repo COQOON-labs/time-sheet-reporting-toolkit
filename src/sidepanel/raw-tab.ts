@@ -5,12 +5,7 @@
 
 import type { CapturedRequest } from '../lib/types.js';
 import { state } from './state.js';
-
-const $ = <T extends Element>(sel: string): T => {
-  const el = document.querySelector<T>(sel);
-  if (!el) throw new Error(`Missing element: ${sel}`);
-  return el;
-};
+import { $ } from './dom.js';
 
 const els = {
   search: $('#search') as HTMLInputElement,

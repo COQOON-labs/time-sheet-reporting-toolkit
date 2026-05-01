@@ -26,3 +26,10 @@ export const DB = {
   version: 1,
   store: 'requests',
 } as const;
+
+/** Matches /timesheet/{employeeId} on Personio's BFF; group 1 is the id. */
+export const TIMESHEET_URL_RE = /\/timesheet\/(\d{3,})/i;
+
+/** Brand color, also referenced via CSS custom property `--brand`. */
+export const BRAND = '#7c3aed';
+export const BRAND_RGBA_18 = 'rgba(124,58,237,.18)';

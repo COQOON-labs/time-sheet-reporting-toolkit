@@ -9,6 +9,9 @@
  */
 
 import type { CapturedRequest } from './types.js';
+import { isPlainObject } from './walk.js';
+import { safePathname } from './parse.js';
+import { escapeCsvCell } from './format.js';
 
 export type ReportRow = Record<string, unknown>;
 
@@ -61,16 +64,8 @@ function* findArrays(
   }
 }
 
-function isPlainObject(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
-}
-
 function pathnameOf(url: string): string {
-  try {
-    return new URL(url).pathname;
-  } catch {
-    return url;
-  }
+  return safePathname(url);
 }
 
 /** Stable per-row key — used to dedupe rows across repeated captures. */
@@ -198,11 +193,9 @@ export function sortRows(
 }
 
 export function exportCsv(columns: string[], rows: ReportRow[]): string {
-  const esc = (s: string): string =>
-    /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  const head = columns.map(esc).join(',');
+  const head = columns.map(escapeCsvCell).join(',');
   const body = rows
-    .map((r) => columns.map((c) => esc(formatCell(r[c]))).join(','))
+    .map((r) => columns.map((c) => escapeCsvCell(formatCell(r[c]))).join(','))
     .join('\n');
   return `${head}\n${body}\n`;
 }

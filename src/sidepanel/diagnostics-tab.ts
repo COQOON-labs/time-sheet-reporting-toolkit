@@ -9,12 +9,7 @@
 import { diagnoseTimeEntries } from '../lib/attendance.js';
 import { escapeHtml } from '../lib/format.js';
 import { state } from './state.js';
-
-const $ = <T extends Element>(sel: string): T => {
-  const el = document.querySelector<T>(sel);
-  if (!el) throw new Error(`Missing element: ${sel}`);
-  return el;
-};
+import { $ } from './dom.js';
 
 const els = {
   diagSummary: $('#diag-summary') as HTMLElement,

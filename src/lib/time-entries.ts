@@ -18,7 +18,9 @@ import {
   durationToHours,
 } from './parse.js';
 import { buildEmployeeIndex, buildProjectIndex } from './name-index.js';
-import { UNKNOWN, PROJECT_ID_PREFIX, EMPLOYEE_ID_PREFIX } from './constants.js';
+import { UNKNOWN, PROJECT_ID_PREFIX, EMPLOYEE_ID_PREFIX, TIMESHEET_URL_RE } from './constants.js';
+import { escapeCsvCell } from './format.js';
+import { safePathname } from './parse.js';
 
 export type TimeEntry = {
   /** Stable id (uses source id when available). */
@@ -168,11 +170,10 @@ export function extractTimeEntries(items: CapturedRequest[]): TimeEntry[] {
   for (const it of items) {
     if (!it.bodyJson) continue;
     // Only the rich /timesheet/{id} endpoint carries project_id + comment + employee context.
-    if (!/\/timesheet\/\d{3,}/.test(it.url)) continue;
-    let source = it.url;
-    try { source = new URL(it.url).pathname; } catch { /* keep raw */ }
-    const urlEmpMatch = /\/timesheet\/(\d{3,})/.exec(it.url);
-    const urlEmpId = urlEmpMatch ? urlEmpMatch[1] : null;
+    if (!TIMESHEET_URL_RE.test(it.url)) continue;
+    const source = safePathname(it.url);
+    const urlEmpMatch = TIMESHEET_URL_RE.exec(it.url);
+    const urlEmpId = urlEmpMatch ? urlEmpMatch[1]! : null;
     for (const arr of walkArrays(it.bodyJson, 0)) {
       const sample = arr.slice(0, 10);
       const matchRate = sample.filter(isLikelyTimeEntry).length / sample.length;
@@ -196,10 +197,11 @@ export function extractTimeEntries(items: CapturedRequest[]): TimeEntry[] {
     }
   }
   // Cross-endpoint dedup: same time slot captured via two endpoints, keep the
-  // more complete one.
+  // more complete one. Includes employee in the signature so two people with
+  // the same hours/comment on the same day don't collapse into one entry.
   const bySig = new Map<string, TimeEntry>();
   for (const e of byId.values()) {
-    const sig = `${e.date}|${e.hours.toFixed(3)}|${e.comment}`;
+    const sig = `${e.date}|${e.employee}|${e.hours.toFixed(3)}|${e.comment}`;
     const prev = bySig.get(sig);
     if (!prev || completeness(e) > completeness(prev)) {
       bySig.set(sig, e);
@@ -266,11 +268,9 @@ export function sortedHoursMap(m: Map<string, number>): [string, number][] {
 
 export function exportEntriesCsv(entries: TimeEntry[]): string {
   const cols: (keyof TimeEntry)[] = ['date', 'hours', 'project', 'activity', 'employee', 'comment'];
-  const esc = (s: string): string =>
-    /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   const head = cols.join(',');
   const body = entries
-    .map((e) => cols.map((c) => esc(String(e[c] ?? ''))).join(','))
+    .map((e) => cols.map((c) => escapeCsvCell(String(e[c] ?? ''))).join(','))
     .join('\n');
   return `${head}\n${body}\n`;
 }

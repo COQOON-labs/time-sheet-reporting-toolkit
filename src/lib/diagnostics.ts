@@ -11,7 +11,9 @@ import {
   walkArrays,
   type TimeEntry,
 } from './time-entries.js';
+import { TIMESHEET_URL_RE } from './constants.js';
 import { TIME_PATH_HINTS } from './sync-planner.js';
+import { safePathname } from './parse.js';
 
 export type DiagRow = {
   source: string;
@@ -26,7 +28,7 @@ export function diagnoseTimeEntries(items: CapturedRequest[]): DiagRow[] {
   for (const it of items) {
     if (!it.bodyJson) continue;
     let source = it.url;
-    try { source = new URL(it.url).pathname; } catch { /* keep raw */ }
+    source = safePathname(it.url);
     for (const arr of walkArrays(it.bodyJson, 0)) {
       if (arr.length < 1) continue;
       const sample = arr.slice(0, 10);
@@ -94,7 +96,7 @@ export function buildDebugLog(items: CapturedRequest[]): {
   const out: DebugEntry[] = [];
   for (const it of items) {
     let pathname = it.url;
-    try { pathname = new URL(it.url).pathname; } catch { /* keep */ }
+    pathname = safePathname(it.url);
     if (!TIME_PATH_HINTS.test(pathname)) continue;
 
     const body = it.bodyJson;
@@ -214,7 +216,7 @@ export function diagnoseOvertime(items: CapturedRequest[]): {
 
   for (const it of items) {
     if (!it.bodyJson) continue;
-    const m = /\/timesheet\/(\d{3,})/.exec(it.url);
+    const m = TIMESHEET_URL_RE.exec(it.url);
     if (!m) continue;
     const employeeId = m[1]!;
     const body = it.bodyJson as Record<string, unknown>;

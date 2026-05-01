@@ -6,19 +6,25 @@
  * Permission model: Personio's /timesheet/{id} only returns 200 when you
  * are either (a) that person yourself or (b) their supervisor. We try to
  * be smart upfront so we don't spam 403s.
+ *
+ * Outputs are always normalized `SyncRequest` objects (never raw strings).
  */
 
 import type { CapturedRequest, SyncRequest } from './types.js';
 import { isPlainObject, walkObjects } from './walk.js';
 import { monthWindows } from './parse.js';
+import { TIMESHEET_URL_RE } from './constants.js';
 
 const TIME_PATH_HINTS = /attendance|project-?time|time-?tracking|working-?time|\bdays\b|time-?entries|project_times|attendances|timesheet|timecard/i;
 const TIME_PATH_EXCLUDE = /kiosk|terminal|stamp-?in|stamp-?out|live|status|setting|config|policy|policies|template|approval-rule|notification|kiosk-service|widget|is-eligible|csat|\/lang\/|\.json$|validate|calculate|propose|reject|approve|create|update|delete/i;
 const DATE_PARAM_KEYS = ['start_date', 'startDate', 'from', 'start', 'date_from', 'dateFrom', 'begin', 'period_start'];
 const END_PARAM_KEYS = ['end_date', 'endDate', 'to', 'end', 'date_to', 'dateTo', 'finish', 'period_end'];
+const PAGINATION_PARAMS = ['page', 'cursor', 'limit', 'offset', 'per_page', 'pageSize'];
 
 /** TIME_PATH_HINTS exposed for diagnostics module. */
 export { TIME_PATH_HINTS };
+
+// ---------- public ---------------------------------------------------------
 
 export function planSyncUrls(
   items: CapturedRequest[],
@@ -26,142 +32,191 @@ export function planSyncUrls(
   to: string,
 ): SyncRequest[] {
   const months = monthWindows(from, to);
-  const uniq = new Set<string>();
+  const ctx = analyzeHistory(items);
+  const templates = extractTimesheetTemplates(items);
   const out: SyncRequest[] = [];
+  const seen = new Set<string>();
 
-  const templates = new Set<string>();
+  const push = (req: SyncRequest): void => {
+    const key = `${req.method ?? 'GET'} ${req.url} ${JSON.stringify(req.body ?? null)}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(req);
+  };
+
+  expandOverMonths(templates, months).forEach(push);
+  buildProbeRequests(ctx).forEach(push);
+
+  return expandOverEmployees(out, ctx, months);
+}
+
+// ---------- history analysis ----------------------------------------------
+
+type HistoryContext = {
+  origin: string | null;
+  ownEmployeeId: string | null;
+  deadEndpoints: Set<string>;
+  forbiddenEmployees: Set<string>;
+  allowedEmployees: Set<string>;
+  candidateEmployees: Set<string>;
+};
+
+function analyzeHistory(items: CapturedRequest[]): HistoryContext {
   let origin: string | null = null;
-  let employeeId: string | null = null;
+  let ownEmployeeId: string | null = null;
+  const dead = new Set<string>();
+  const forbidden = new Set<string>();
   for (const it of items) {
     try {
       const u = new URL(it.url);
       if (!origin && /personio\.(de|com)$/.test(u.hostname) && u.pathname.startsWith('/svc/')) {
         origin = u.origin;
       }
-      if (!employeeId) {
-        const m = u.pathname.match(/\/timesheet\/(\d+)/);
-        if (m) employeeId = m[1]!;
+      if (!ownEmployeeId) {
+        const m = TIMESHEET_URL_RE.exec(u.pathname);
+        if (m) ownEmployeeId = m[1]!;
       }
+    } catch { /* ignore */ }
+    if (it.status >= 400 && it.status < 500) dead.add(it.url.split('?')[0]!);
+    if (it.status === 403) {
+      const m = TIMESHEET_URL_RE.exec(it.url);
+      if (m) forbidden.add(m[1]!);
+    }
+  }
+  const allowed = collectAllowedEmployeeIds(items);
+  const candidate = allowed.size > 0 ? allowed : collectEmployeeIds(items);
+  if (ownEmployeeId) candidate.add(ownEmployeeId);
+  return {
+    origin, ownEmployeeId,
+    deadEndpoints: dead, forbiddenEmployees: forbidden,
+    allowedEmployees: allowed, candidateEmployees: candidate,
+  };
+}
+
+// ---------- timesheet template extraction ---------------------------------
+
+function extractTimesheetTemplates(items: CapturedRequest[]): string[] {
+  const templates = new Set<string>();
+  for (const it of items) {
+    try {
+      const u = new URL(it.url);
       if (!TIME_PATH_HINTS.test(u.pathname)) continue;
       if (TIME_PATH_EXCLUDE.test(u.pathname)) continue;
       // Only replay the rich /timesheet/{id} endpoint.
-      if (!/\/timesheet\/\d{3,}/.test(u.pathname)) continue;
+      if (!TIMESHEET_URL_RE.test(u.pathname)) continue;
       if (it.method && it.method !== 'GET') continue;
       if (it.status >= 400 && it.status < 500) continue;
-      ['page', 'cursor', 'limit', 'offset', 'per_page', 'pageSize'].forEach((k) => u.searchParams.delete(k));
+      PAGINATION_PARAMS.forEach((k) => u.searchParams.delete(k));
       templates.add(u.toString());
     } catch { /* ignore */ }
   }
+  return Array.from(templates);
+}
 
-  function addUrl(s: string): void {
-    if (uniq.has(s)) return;
-    uniq.add(s); out.push(s);
-  }
+// ---------- expansion -----------------------------------------------------
 
+function expandOverMonths(
+  templates: string[],
+  months: Array<{ start: string; end: string }>,
+): SyncRequest[] {
+  const out: SyncRequest[] = [];
   for (const tpl of templates) {
     const u = new URL(tpl);
     const dateKey = DATE_PARAM_KEYS.find((k) => u.searchParams.has(k));
     const endKey = END_PARAM_KEYS.find((k) => u.searchParams.has(k));
-
-    if (dateKey && endKey && months.length > 0) {
-      for (const w of months) {
-        const u2 = new URL(tpl);
-        u2.searchParams.set(dateKey, w.start);
-        u2.searchParams.set(endKey, w.end);
-        addUrl(u2.toString());
-      }
-    } else if (dateKey && months.length > 0) {
-      for (const w of months) {
-        const u2 = new URL(tpl);
-        u2.searchParams.set(dateKey, w.start);
-        addUrl(u2.toString());
-      }
-    } else {
-      addUrl(tpl);
+    if (months.length === 0 || !dateKey) {
+      out.push({ url: tpl, method: 'GET' });
+      continue;
+    }
+    for (const w of months) {
+      const u2 = new URL(tpl);
+      u2.searchParams.set(dateKey, w.start);
+      if (endKey) u2.searchParams.set(endKey, w.end);
+      out.push({ url: u2.toString(), method: 'GET' });
     }
   }
+  return out;
+}
 
-  // Probes for project metadata + permission discovery.
-  if (origin) {
-    const dead = new Set<string>();
-    for (const it of items) {
-      if (it.status >= 400 && it.status < 500) dead.add(it.url.split('?')[0]!);
-    }
-
-    if (employeeId) {
-      const gqlUrl = `${origin}/graphql?op=TM_TrackableProjects_v2025091101`;
-      out.push({
-        url: gqlUrl,
-        method: 'POST',
-        body: {
-          operationName: 'TM_TrackableProjects_v2025091101',
-          query: 'TM_TrackableProjects_v2025091101',
-          variables: { personId: { id: employeeId } },
-        },
-      });
-    }
-
-    const probes = [
-      `${origin}/svc/attendance-bff/projects`,
-      `${origin}/svc/attendance-bff/v1/projects`,
-      `${origin}/svc/attendance-api/v1/projects`,
-    ];
-    for (const p of probes) {
-      if (!dead.has(p.split('?')[0]!)) addUrl(p);
-    }
-
-    const peopleListUrl = `${origin}/people-list/bff/data`;
-    if (!dead.has(peopleListUrl)) {
-      out.push({
-        url: peopleListUrl,
-        method: 'POST',
-        body: { filters: {}, page: 0, pageSize: 1000 },
-      });
-    }
-
-    const orgUrl = `${origin}/platform/dashboard/api/v1/my-organization`;
-    if (!dead.has(orgUrl)) addUrl(orgUrl);
-  }
-
-  // Fan out timesheet templates over every known employee id.
-  const forbidden = new Set<string>();
-  for (const it of items) {
-    if (it.status !== 403) continue;
-    const m = /\/timesheet\/(\d+)/.exec(it.url);
-    if (m) forbidden.add(m[1]!);
-  }
-  const allowed = collectAllowedEmployeeIds(items);
-  const candidatePool = allowed.size > 0 ? allowed : collectEmployeeIds(items);
-  if (employeeId) candidatePool.add(employeeId);
-  const knownEmployees = new Set(
-    Array.from(candidatePool).filter((id) => !forbidden.has(id)),
+function expandOverEmployees(
+  reqs: SyncRequest[],
+  ctx: HistoryContext,
+  months: Array<{ start: string; end: string }>,
+): SyncRequest[] {
+  const known = new Set(
+    Array.from(ctx.candidateEmployees).filter((id) => !ctx.forbiddenEmployees.has(id)),
   );
-  if (knownEmployees.size > 0 && months.length > 0) {
-    const expanded: SyncRequest[] = [];
-    for (const item of out) {
-      if (typeof item !== 'string') { expanded.push(item); continue; }
-      const m = /\/timesheet\/(\d+)/.exec(item);
-      if (!m) { expanded.push(item); continue; }
-      for (const empId of knownEmployees) {
-        expanded.push(item.replace(`/timesheet/${m[1]}`, `/timesheet/${empId}`));
-      }
+  if (known.size === 0 || months.length === 0) return reqs;
+
+  const expanded: SyncRequest[] = [];
+  const seen = new Set<string>();
+  const push = (r: SyncRequest): void => {
+    const key = `${r.method ?? 'GET'} ${r.url}`;
+    if (seen.has(key)) return;
+    seen.add(key); expanded.push(r);
+  };
+  for (const r of reqs) {
+    const m = TIMESHEET_URL_RE.exec(r.url);
+    if (!m) { push(r); continue; }
+    for (const empId of known) {
+      push({ ...r, url: r.url.replace(`/timesheet/${m[1]}`, `/timesheet/${empId}`) });
     }
-    return Array.from(new Set(
-      expanded.map((x) => typeof x === 'string' ? x : JSON.stringify(x))
-    )).map((s) => {
-      try { return JSON.parse(s) as SyncRequest; } catch { return s; }
+  }
+  return expanded;
+}
+
+// ---------- probe requests ------------------------------------------------
+
+function buildProbeRequests(ctx: HistoryContext): SyncRequest[] {
+  const out: SyncRequest[] = [];
+  if (!ctx.origin) return out;
+  const { origin, deadEndpoints, ownEmployeeId } = ctx;
+  const isDead = (url: string): boolean => deadEndpoints.has(url.split('?')[0]!);
+
+  if (ownEmployeeId) {
+    const gqlUrl = `${origin}/graphql?op=TM_TrackableProjects_v2025091101`;
+    out.push({
+      url: gqlUrl,
+      method: 'POST',
+      body: {
+        operationName: 'TM_TrackableProjects_v2025091101',
+        query: 'TM_TrackableProjects_v2025091101',
+        variables: { personId: { id: ownEmployeeId } },
+      },
     });
   }
 
+  for (const p of [
+    `${origin}/svc/attendance-bff/projects`,
+    `${origin}/svc/attendance-bff/v1/projects`,
+    `${origin}/svc/attendance-api/v1/projects`,
+  ]) {
+    if (!isDead(p)) out.push({ url: p, method: 'GET' });
+  }
+
+  const peopleListUrl = `${origin}/people-list/bff/data`;
+  if (!isDead(peopleListUrl)) {
+    out.push({
+      url: peopleListUrl,
+      method: 'POST',
+      body: { filters: {}, page: 0, pageSize: 1000 },
+    });
+  }
+
+  const orgUrl = `${origin}/platform/dashboard/api/v1/my-organization`;
+  if (!isDead(orgUrl)) out.push({ url: orgUrl, method: 'GET' });
+
   return out;
 }
+
+// ---------- employee-id discovery -----------------------------------------
 
 /** Employee ids the current user is *allowed* to view (200 timesheet OR direct_report). */
 function collectAllowedEmployeeIds(items: CapturedRequest[]): Set<string> {
   const ids = new Set<string>();
   for (const it of items) {
     if (it.status === 200) {
-      const m = /\/timesheet\/(\d+)/.exec(it.url);
+      const m = TIMESHEET_URL_RE.exec(it.url);
       if (m) ids.add(m[1]!);
     }
     if (!it.bodyJson) continue;
@@ -188,7 +243,6 @@ function recordDirectReports(o: Record<string, unknown>, ids: Set<string>): void
 function collectEmployeeIds(items: CapturedRequest[]): Set<string> {
   const ids = new Set<string>();
   for (const it of items) {
-    // Many endpoints leak the full visible-employee list right in the URL.
     try {
       const u = new URL(it.url);
       for (const key of ['employee_ids', 'employeeIds', 'person_ids', 'personIds', 'ids']) {
