@@ -1,0 +1,183 @@
+/**
+ * Sidepanel bootstrap.
+ *
+ * - Wires global tab routing + DEV-gating.
+ * - Loads dashboard module (always).
+ * - Lazy-loads dev-only tab modules (raw, reports, diagnostics) only when
+ *   running with `import.meta.env.DEV` true or `?dev=1` in the URL.
+ * - Owns the periodic refresh loop.
+ */
+
+import {
+  extractTimeEntries, extractDailyOvertime, getOwnEmployee, buildDebugLog,
+  diagnoseTimeEntries, planSyncUrls,
+} from '../lib/attendance.js';
+import { download, stamp } from '../lib/format.js';
+import { STORAGE_KEYS } from '../lib/constants.js';
+import { readPrefBool, writePrefBool } from '../lib/prefs.js';
+import { state, setState, buildNameToIdMap } from './state.js';
+import { send } from './messaging.js';
+import {
+  wireDashboard,
+  renderDashboard,
+  syncDashboardFiltersFromState,
+  kickoffInitialAutoSync,
+  onSyncDoneRegister,
+  currentRange,
+} from './dashboard.js';
+
+const DEV_UI =
+  import.meta.env.DEV ||
+  new URLSearchParams(location.search).has('dev');
+
+if (!DEV_UI) {
+  document
+    .querySelectorAll<HTMLElement>('[data-dev-only]')
+    .forEach((el) => el.classList.add('hidden'));
+}
+
+const $ = <T extends Element>(sel: string): T => {
+  const el = document.querySelector<T>(sel);
+  if (!el) throw new Error(`Missing element: ${sel}`);
+  return el;
+};
+
+const els = {
+  status: $('#status') as HTMLParagraphElement,
+  refresh: $('#refresh') as HTMLButtonElement,
+  exportBtn: $('#export') as HTMLButtonElement,
+  clear: $('#clear') as HTMLButtonElement,
+  dashDebug: $('#dash-debug') as HTMLButtonElement,
+  tabs: document.querySelectorAll<HTMLButtonElement>('.tab'),
+  panels: document.querySelectorAll<HTMLElement>('.tab-panel'),
+  tabsNav: document.querySelector<HTMLElement>('nav.tabs'),
+};
+
+// ---------- Tab routing ----------
+els.tabs.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const id = btn.dataset.tab;
+    if (!id) return;
+    els.tabs.forEach((b) => b.classList.toggle('active', b === btn));
+    els.panels.forEach((p) => p.classList.toggle('active', p.id === `tab-${id}`));
+  });
+});
+
+// Hide the tab nav entirely when only one tab remains visible (production).
+if (els.tabsNav) {
+  const visible = Array.from(els.tabs).filter((t) => !t.classList.contains('hidden'));
+  if (visible.length <= 1) els.tabsNav.classList.add('hidden');
+}
+
+// ---------- Dev-only tab modules (lazy) ----------
+
+type DevTabs = {
+  renderRaw: () => void;
+  rebuildReports: (items: typeof state.allItems) => void;
+  reportsCount: () => number;
+  renderDiagnostics: () => void;
+};
+
+let devTabs: DevTabs | null = null;
+
+async function loadDevTabsIfNeeded(): Promise<void> {
+  if (!DEV_UI || devTabs) return;
+  const [raw, reps, diag] = await Promise.all([
+    import('./raw-tab.js'),
+    import('./reports-tab.js'),
+    import('./diagnostics-tab.js'),
+  ]);
+  raw.wireRaw();
+  reps.wireReports();
+  diag.wireDiagnostics();
+  devTabs = {
+    renderRaw: raw.renderRaw,
+    rebuildReports: reps.rebuildReports,
+    reportsCount: reps.reportsCount,
+    renderDiagnostics: diag.renderDiagnostics,
+  };
+}
+
+// ---------- Refresh ----------
+
+async function refresh(): Promise<void> {
+  const res = await send('list', { limit: 5000 });
+  const allItems = res.items ?? [];
+  const timeEntries = extractTimeEntries(allItems);
+  const dailyOvertime = extractDailyOvertime(allItems);
+  const ownEmployee = getOwnEmployee(allItems);
+
+  setState({
+    allItems,
+    timeEntries,
+    dailyOvertime,
+    ownEmployee,
+    nameToId: buildNameToIdMap(),
+  });
+  // buildNameToIdMap reads state, so we need a second pass once state is set.
+  setState({ nameToId: buildNameToIdMap() });
+
+  syncDashboardFiltersFromState();
+  renderDashboard();
+
+  if (devTabs) {
+    devTabs.rebuildReports(allItems);
+    devTabs.renderRaw();
+    devTabs.renderDiagnostics();
+  }
+
+  const reportsLabel = devTabs
+    ? ` · ${devTabs.reportsCount()} report${devTabs.reportsCount() === 1 ? '' : 's'}`
+    : '';
+  const ec = timeEntries.length;
+  els.status.textContent = `${allItems.length} req${reportsLabel} · ${ec} time entr${ec === 1 ? 'y' : 'ies'}`;
+}
+
+// ---------- Header buttons ----------
+
+els.refresh.addEventListener('click', () => { void refresh(); });
+
+els.clear.addEventListener('click', async () => {
+  if (!confirm('Delete all captured requests?')) return;
+  await send('clear');
+  await refresh();
+});
+
+els.exportBtn.addEventListener('click', async () => {
+  const r = await send('export');
+  download(r.json, `analytics-for-personio-${stamp()}.json`, 'application/json');
+});
+
+els.dashDebug.addEventListener('click', () => {
+  const log = buildDebugLog(state.allItems);
+  const range = currentRange();
+  const payload = {
+    generatedAt: new Date().toISOString(),
+    range,
+    plannedSyncUrls: planSyncUrls(state.allItems, range.from, range.to),
+    lastSync: { urls: state.lastSyncUrls, result: state.lastSyncResult },
+    summary: {
+      totalCaptures: state.allItems.length,
+      timeRelatedCaptures: log.timeRelated,
+      detectedTimeEntries: state.timeEntries.length,
+    },
+    diagnostics: diagnoseTimeEntries(state.allItems),
+    captures: log.entries,
+  };
+  download(JSON.stringify(payload, null, 2), `personio-debug-${stamp()}.json`, 'application/json');
+});
+
+// ---------- Wire dashboard + initial load ----------
+
+const initialAuto = readPrefBool(STORAGE_KEYS.autoSync, false);
+wireDashboard({
+  autoSyncInitial: initialAuto,
+  onAutoSyncChange: (checked) => writePrefBool(STORAGE_KEYS.autoSync, checked),
+});
+onSyncDoneRegister(() => { void refresh(); });
+
+void (async () => {
+  await loadDevTabsIfNeeded();
+  await refresh();
+  kickoffInitialAutoSync();
+})();

@@ -1,0 +1,42 @@
+{
+  "manifest_version": 3,
+  "name": "Reporting for Personio",
+  "version": "0.1.0",
+  "description": "Collects Personio API responses and renders an in-page reporting sidepanel with filters, search and charts.",
+  "minimum_chrome_version": "114",
+  "action": {
+    "default_title": "Reporting for Personio",
+    "default_popup": "src/popup/popup.html"
+  },
+  "background": {
+    "service_worker": "src/background/background.ts",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.personio.de/*", "*://*.personio.com/*"],
+      "js": ["src/inject/inject.ts"],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": false
+    },
+    {
+      "matches": ["*://*.personio.de/*", "*://*.personio.com/*"],
+      "js": ["src/content/content.ts"],
+      "run_at": "document_start",
+      "world": "ISOLATED",
+      "all_frames": false
+    }
+  ],
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": ["*://*.personio.de/*", "*://*.personio.com/*"],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "src/sidepanel/sidepanel.html",
+        "assets/*"
+      ],
+      "matches": ["*://*.personio.de/*", "*://*.personio.com/*"]
+    }
+  ]
+}

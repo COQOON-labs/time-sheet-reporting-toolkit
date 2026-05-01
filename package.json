@@ -1,0 +1,25 @@
+{
+  "name": "analytics-for-personio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Browser extension that collects Personio API responses and renders an in-page analytics sidepanel.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "test": "vitest run",
+    "zip": "npm run build && cd dist && zip -r ../analytics-for-personio.zip ."
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "^2.0.0-beta.25",
+    "@types/chrome": "^0.0.270",
+    "@types/node": "^25.6.0",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.0",
+    "vitest": "^4.1.5"
+  },
+  "dependencies": {
+    "chart.js": "^4.4.4",
+    "idb": "^8.0.0"
+  }
+}

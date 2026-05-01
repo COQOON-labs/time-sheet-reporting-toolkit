@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Reporting for Personio</title>
+    <link rel="stylesheet" href="./sidepanel.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo">📊</span>
+        <div>
+          <h1>Reporting for Personio</h1>
+          <p id="status" class="status">Loading…</p>
+        </div>
+      </div>
+      <div class="actions">
+        <button id="refresh" title="Refresh">↻</button>
+        <button id="export" title="Export all captured JSON" data-dev-only>⬇ JSON</button>
+        <button id="clear" title="Clear all" class="danger" data-dev-only>🗑</button>
+      </div>
+    </header>
+
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-tab="dashboard" role="tab">Dashboard</button>
+      <button class="tab" data-tab="reports" role="tab" data-dev-only>Reports</button>
+      <button class="tab" data-tab="raw" role="tab" data-dev-only>Raw Requests</button>
+    </nav>
+
+    <!-- ============ DASHBOARD TAB ============ -->
+    <section id="tab-dashboard" class="tab-panel active">
+      <header class="dash-controls">
+        <div class="quick-filters" id="quick-filters">
+          <button data-preset="this-month" class="qf active">This month</button>
+          <button data-preset="last-month" class="qf">Last month</button>
+          <button data-preset="last-3-months" class="qf">Last 3 months</button>
+          <button data-preset="last-6-months" class="qf">Last 6 months</button>
+          <button data-preset="this-year" class="qf">This year</button>
+          <button data-preset="all" class="qf">All</button>
+          <button data-preset="custom" class="qf">Custom…</button>
+        </div>
+        <div class="ctrl-row">
+          <div class="ctrl">
+            <label>From</label>
+            <input id="dash-from" type="date" />
+          </div>
+          <div class="ctrl">
+            <label>To</label>
+            <input id="dash-to" type="date" />
+          </div>
+          <div class="ctrl">
+            <label>Employee</label>
+            <select id="dash-employee"><option value="">All</option></select>
+          </div>
+          <div class="ctrl">
+            <label>Project</label>
+            <select id="dash-project"><option value="">All</option></select>
+          </div>
+          <div class="ctrl ctrl-grow">
+            <label>Search</label>
+            <input id="dash-search" type="search" placeholder="comment, activity…" />
+          </div>
+          <button id="dash-sync" class="primary" title="Actively re-fetch every month in the selected range from Personio">⟳ Sync now</button>
+          <label class="auto-sync-label" title="Automatically sync when the panel opens and every 5 min">
+            <input type="checkbox" id="dash-auto-sync" checked /> auto
+          </label>
+          <button id="dash-export" class="ghost">⬇ CSV</button>
+          <button id="dash-report" class="ghost" title="Open a print-ready report (Cmd/Ctrl+P to save as PDF)">📄 Report</button>
+          <button id="dash-debug" class="ghost" title="Download a debug JSON of all time-related captures so the dev can analyze field shapes" data-dev-only>🐛 Debug log</button>
+        </div>
+        <p id="sync-status" class="sync-status muted"></p>
+      </header>
+
+      <section class="kpis">
+        <div class="kpi"><span>Total hours</span><strong id="kpi-hours">0h</strong></div>
+        <div class="kpi"><span>Overtime</span><strong id="kpi-overtime">0h</strong></div>
+        <div class="kpi"><span>Entries</span><strong id="kpi-entries">0</strong></div>
+        <div class="kpi"><span>Days worked</span><strong id="kpi-days">0</strong></div>
+        <div class="kpi"><span>Projects</span><strong id="kpi-projects">0</strong></div>
+        <div class="kpi"><span>Avg / day</span><strong id="kpi-avg">0h</strong></div>
+      </section>
+
+      <section class="dash-charts">
+        <div class="card">
+          <h3>Hours per day</h3>
+          <canvas id="dash-line" height="120"></canvas>
+        </div>
+        <div class="card">
+          <h3>Hours per project</h3>
+          <canvas id="dash-bar-project" height="120"></canvas>
+        </div>
+      </section>
+
+      <section class="dash-tables">
+        <div class="card">
+          <h3>Top projects</h3>
+          <table class="mini">
+            <thead><tr><th>Project</th><th class="num">Hours</th><th class="num">%</th></tr></thead>
+            <tbody id="tbl-projects"></tbody>
+          </table>
+        </div>
+        <div class="card" id="card-employees">
+          <h3>By employee</h3>
+          <table class="mini">
+            <thead><tr><th>Employee</th><th class="num">Hours</th><th class="num">%</th></tr></thead>
+            <tbody id="tbl-employees"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card entries-card">
+        <h3>Time entries <span id="entries-count" class="muted"></span></h3>
+        <div class="table-wrap">
+          <table id="entries-table" class="mini">
+            <thead><tr>
+              <th>Date</th><th class="num">Hours</th><th>Project</th>
+              <th>Activity</th><th>Employee</th><th>Comment</th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p id="entries-empty" class="empty hidden">
+          No time entries detected yet. Open Personio's Attendance / Project-Time
+          page so the extension can capture the data.
+        </p>
+      </section>
+
+      <section class="card diag-card" data-dev-only>
+        <h3>
+          Detection diagnostics <span class="muted">(why no entries?)</span>
+          <label class="diag-toggle"><input type="checkbox" id="diag-show-all" /> show all sources</label>
+        </h3>
+        <p class="muted" id="diag-summary">Waiting for captured requests…</p>
+        <div class="table-wrap" style="max-height:240px;">
+          <table class="mini">
+            <thead><tr>
+              <th>Source</th><th class="num">Rows</th><th>Sample keys</th><th>Reason</th>
+            </tr></thead>
+            <tbody id="diag-rows"></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+
+    <!-- ============ REPORTS TAB ============ -->
+    <section id="tab-reports" class="tab-panel" data-dev-only>
+      <aside class="report-sidebar">
+        <div class="sidebar-head">
+          <strong>Detected reports</strong>
+          <span id="report-count" class="muted">0</span>
+        </div>
+        <ul id="report-list" class="report-list"></ul>
+        <p class="hint muted">
+          Reports are detected automatically from JSON arrays in captured
+          responses. Browse Personio (Attendance, Absences, Employees, …) to
+          populate this list.
+        </p>
+      </aside>
+
+      <main class="report-main">
+        <header class="report-head">
+          <div>
+            <h2 id="report-title">No report selected</h2>
+            <p id="report-meta" class="muted"></p>
+          </div>
+          <div class="report-actions">
+            <input id="report-search" type="search" placeholder="Filter rows…" />
+            <button id="export-csv" title="Export current report as CSV">⬇ CSV</button>
+          </div>
+        </header>
+
+        <section class="report-summary">
+          <div class="summary-card"><span class="muted">Rows</span><strong id="sum-rows">0</strong></div>
+          <div class="summary-card"><span class="muted">Columns</span><strong id="sum-cols">0</strong></div>
+          <div class="summary-card"><span class="muted">Captures</span><strong id="sum-caps">0</strong></div>
+          <div class="summary-card"><span class="muted">Last seen</span><strong id="sum-last">–</strong></div>
+        </section>
+
+        <div class="charts">
+          <canvas id="chart-category" height="120"></canvas>
+          <canvas id="chart-timeline" height="120"></canvas>
+        </div>
+
+        <div class="table-wrap">
+          <table id="report-table">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p id="report-empty" class="empty hidden">
+          Select a report on the left, or browse Personio to capture data.
+        </p>
+      </main>
+    </section>
+
+    <!-- ============ RAW TAB ============ -->
+    <section id="tab-raw" class="tab-panel" data-dev-only>
+      <section class="filters">
+        <input id="search" type="search" placeholder="Search URL or JSON…" />
+        <select id="category">
+          <option value="">All categories</option>
+        </select>
+      </section>
+      <main id="list" class="list" aria-live="polite"></main>
+      <template id="row-tpl">
+        <article class="row">
+          <header>
+            <span class="method"></span>
+            <span class="status"></span>
+            <span class="cat"></span>
+            <time></time>
+          </header>
+          <div class="url"></div>
+          <details>
+            <summary>Response body</summary>
+            <pre class="body"></pre>
+          </details>
+        </article>
+      </template>
+    </section>
+
+    <script type="module" src="./sidepanel.ts"></script>
+  </body>
+</html>
