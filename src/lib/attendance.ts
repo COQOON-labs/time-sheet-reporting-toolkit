@@ -2,14 +2,9 @@
  * Re-export barrel — narrow façade exposed to the sidepanel/UI layer.
  *
  * Only the symbols actually consumed by UI modules are re-exported here.
- * Lib-internal helpers (`pick`, `pickLabel`, `parseTime`, `toIsoDate`,
- * `durationToHours`, `monthWindows`, `safeStringify`, `derivePersonName`,
- * `buildEmployeeIndex`, `buildProjectIndex`, `isLikelyTimeEntry`,
- * `normalizeRow`, `TIME_PATH_HINTS`, `isoDaysAgo`, `dateSeries`) are
- * kept module-local to make their usage easy to audit.
- *
- * UI code should keep importing from this barrel; tests + lib code
- * should import from the focused modules directly.
+ * Lib-internal helpers (parsing, name-index builders, walk helpers, etc.)
+ * are kept module-local. UI code should keep importing from this barrel;
+ * tests + lib code should import from the focused modules directly.
  */
 
 export type { TimeEntry, DateRange } from './time-entries.js';

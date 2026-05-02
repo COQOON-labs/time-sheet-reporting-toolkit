@@ -16,11 +16,11 @@ import {
   parseTime,
   toIsoDate,
   durationToHours,
+  safePathname,
 } from './parse.js';
 import { buildEmployeeIndex, buildProjectIndex } from './name-index.js';
 import { UNKNOWN, PROJECT_ID_PREFIX, EMPLOYEE_ID_PREFIX, TIMESHEET_URL_RE } from './constants.js';
 import { escapeCsvCell } from './format.js';
-import { safePathname } from './parse.js';
 
 export type TimeEntry = {
   /** Stable id (uses source id when available). */

@@ -100,11 +100,11 @@ npm test
 
 ## 🔐 Privacy & permissions
 
-| Permission                                  | Why                                                   |
-| ------------------------------------------- | ----------------------------------------------------- |
-| `storage`                                   | UI preferences (auto-sync toggle).                    |
-| `activeTab`, `scripting`                    | Inject the page-context interceptor.                  |
-| `host_permissions: *.personio.de / .com`    | Restrict the extension strictly to Personio domains.  |
+| Permission                               | Why                                                  |
+| ---------------------------------------- | ---------------------------------------------------- |
+| `storage`                                | UI preferences (auto-sync toggle).                   |
+| `activeTab`, `scripting`                 | Inject the page-context interceptor.                 |
+| `host_permissions: *.personio.de / .com` | Restrict the extension strictly to Personio domains. |
 
 **Data handling:**
 

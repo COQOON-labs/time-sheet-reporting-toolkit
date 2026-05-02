@@ -27,8 +27,7 @@ export function diagnoseTimeEntries(items: CapturedRequest[]): DiagRow[] {
   const out = new Map<string, DiagRow>();
   for (const it of items) {
     if (!it.bodyJson) continue;
-    let source = it.url;
-    source = safePathname(it.url);
+    const source = safePathname(it.url);
     for (const arr of walkArrays(it.bodyJson, 0)) {
       if (arr.length < 1) continue;
       const sample = arr.slice(0, 10);
@@ -95,8 +94,7 @@ export function buildDebugLog(items: CapturedRequest[]): {
 } {
   const out: DebugEntry[] = [];
   for (const it of items) {
-    let pathname = it.url;
-    pathname = safePathname(it.url);
+    const pathname = safePathname(it.url);
     if (!TIME_PATH_HINTS.test(pathname)) continue;
 
     const body = it.bodyJson;

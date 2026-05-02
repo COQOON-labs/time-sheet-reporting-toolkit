@@ -9,6 +9,7 @@
 import type { CapturedRequest } from './types.js';
 import { isPlainObject, walkObjects } from './walk.js';
 import { safeStringify } from './parse.js';
+import { TIMESHEET_URL_RE } from './constants.js';
 
 const ID_RE = /^\d{3,}$/;
 
@@ -78,7 +79,7 @@ export function getOwnEmployee(items: CapturedRequest[]): { id: string; name: st
   // 2. Fallback: first timesheet URL the inject hook captured = own.
   let fallbackId: string | null = null;
   for (const it of items) {
-    const m = /\/timesheet\/(\d{3,})/.exec(it.url);
+    const m = TIMESHEET_URL_RE.exec(it.url);
     if (m) { fallbackId = m[1]!; break; }
   }
   if (!fallbackId) return null;

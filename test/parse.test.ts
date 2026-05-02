@@ -4,7 +4,6 @@ import {
   parseTime,
   toIsoDate,
   monthWindows,
-  dateSeries,
   pick,
   pickLabel,
 } from '../src/lib/parse.js';
@@ -74,13 +73,6 @@ describe('monthWindows', () => {
   });
   it('returns empty for inverted range', () => {
     expect(monthWindows('2024-05-10', '2024-04-01')).toEqual([]);
-  });
-});
-
-describe('dateSeries', () => {
-  it('inclusive day list', () => {
-    expect(dateSeries('2024-02-28', '2024-03-02'))
-      .toEqual(['2024-02-28', '2024-02-29', '2024-03-01', '2024-03-02']);
   });
 });
 

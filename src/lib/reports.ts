@@ -64,11 +64,6 @@ function* findArrays(
   }
 }
 
-function pathnameOf(url: string): string {
-  return safePathname(url);
-}
-
-/** Stable per-row key — used to dedupe rows across repeated captures. */
 function rowKey(row: ReportRow): string {
   // Prefer a real id column if present.
   for (const k of ['id', 'uuid', 'employee_id', 'employeeId', 'key']) {
@@ -98,7 +93,7 @@ export function buildReports(items: CapturedRequest[]): Report[] {
 
   for (const it of ordered) {
     if (!it.bodyJson) continue;
-    const pathname = pathnameOf(it.url);
+    const pathname = safePathname(it.url);
 
     for (const found of findArrays(it.bodyJson, '', 0)) {
       const id = `${pathname}#${found.path || '$'}`;

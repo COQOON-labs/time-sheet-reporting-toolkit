@@ -93,24 +93,6 @@ export function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-export function isoDaysAgo(n: number): string {
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() - n);
-  return d.toISOString().slice(0, 10);
-}
-
-/** Inclusive list of YYYY-MM-DD dates between from..to. */
-export function dateSeries(from: string, to: string): string[] {
-  const out: string[] = [];
-  const a = new Date(from + 'T00:00:00Z');
-  const b = new Date(to + 'T00:00:00Z');
-  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime()) || a > b) return out;
-  for (let d = a; d <= b; d.setUTCDate(d.getUTCDate() + 1)) {
-    out.push(d.toISOString().slice(0, 10));
-  }
-  return out;
-}
-
 /** Inclusive list of [start, end] for each calendar month touching [from, to]. */
 export function monthWindows(from: string, to: string): Array<{ start: string; end: string }> {
   const out: Array<{ start: string; end: string }> = [];

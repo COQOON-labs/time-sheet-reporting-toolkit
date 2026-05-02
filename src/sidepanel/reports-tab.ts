@@ -10,6 +10,7 @@ import {
 } from '../lib/reports.js';
 import { Chart } from 'chart.js';
 import { escapeHtml, download, stamp } from '../lib/format.js';
+import { BRAND, BRAND_RGBA_18 } from '../lib/constants.js';
 import { state } from './state.js';
 import { $ } from './dom.js';
 
@@ -155,7 +156,7 @@ function drawOverviewCharts(): void {
     type: 'bar',
     data: {
       labels: top.map((r) => prettyLabel(r)),
-      datasets: [{ label: 'Rows per report', data: top.map((r) => r.rows.length), backgroundColor: '#7c3aed' }],
+      datasets: [{ label: 'Rows per report', data: top.map((r) => r.rows.length), backgroundColor: BRAND }],
     },
     options: {
       indexAxis: 'y',
@@ -179,8 +180,8 @@ function drawOverviewCharts(): void {
       datasets: [{
         label: 'Captures / min',
         data: sorted.map(([, v]) => v),
-        borderColor: '#7c3aed',
-        backgroundColor: 'rgba(124,58,237,.18)',
+        borderColor: BRAND,
+        backgroundColor: BRAND_RGBA_18,
         fill: true, tension: 0.25, pointRadius: 2,
       }],
     },
