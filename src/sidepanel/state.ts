@@ -6,8 +6,7 @@
 
 import type { CapturedRequest, SyncRequest, SyncResult } from '../lib/types.js';
 import type { TimeEntry, DailyOvertime } from '../lib/attendance.js';
-import { TIMESHEET_URL_RE } from '../lib/constants.js';
-import { EMPLOYEE_ID_PREFIX, UNKNOWN } from '../lib/constants.js';
+import { TIMESHEET_URL_RE, EMPLOYEE_ID_PREFIX, UNKNOWN } from '../lib/constants.js';
 
 export type AppState = {
   allItems: CapturedRequest[];

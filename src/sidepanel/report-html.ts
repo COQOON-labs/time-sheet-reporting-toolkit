@@ -1,6 +1,7 @@
 /**
  * Print-ready HTML report builder. Self-contained: inline CSS + a small
- * <script> for the print button. Opened in a new tab via data: URL.
+ * <script> for the print button. Opened in a new tab via a Blob URL
+ * (created by the dashboard).
  */
 
 import type { TimeEntry, DateRange } from '../lib/attendance.js';

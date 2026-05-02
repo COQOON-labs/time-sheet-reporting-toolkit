@@ -78,6 +78,27 @@ describe('extractTimeEntries', () => {
     )];
     expect(extractTimeEntries(items)).toHaveLength(0);
   });
+
+  it('does NOT collapse identical entries from different employees (B1 regression)', () => {
+    // Two distinct timesheet URLs (different employee ids) returning entries
+    // that are identical on date / hours / comment. Earlier dedup logic used
+    // only those three fields and silently dropped one of them.
+    const items = [
+      { id: 'a', url: 'https://example/api/v1/timesheet/100', method: 'GET', status: 200,
+        category: 'time', capturedAt: 1, bodyJson: { entries: [
+          { id: 'e1', date: '2024-03-01', hours: 8, comment: 'meeting',
+            employee: { first_name: 'Alice', last_name: 'A' } },
+        ]}},
+      { id: 'b', url: 'https://example/api/v1/timesheet/200', method: 'GET', status: 200,
+        category: 'time', capturedAt: 2, bodyJson: { entries: [
+          { id: 'e2', date: '2024-03-01', hours: 8, comment: 'meeting',
+            employee: { first_name: 'Bob', last_name: 'B' } },
+        ]}},
+    ] as unknown as CapturedRequest[];
+    const out = extractTimeEntries(items);
+    expect(out).toHaveLength(2);
+    expect(new Set(out.map((e) => e.employee))).toEqual(new Set(['Alice A', 'Bob B']));
+  });
 });
 
 describe('filterEntries / sumHours / groupHoursBy', () => {

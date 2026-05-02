@@ -57,7 +57,6 @@ type HistoryContext = {
   ownEmployeeId: string | null;
   deadEndpoints: Set<string>;
   forbiddenEmployees: Set<string>;
-  allowedEmployees: Set<string>;
   candidateEmployees: Set<string>;
 };
 
@@ -89,7 +88,7 @@ function analyzeHistory(items: CapturedRequest[]): HistoryContext {
   return {
     origin, ownEmployeeId,
     deadEndpoints: dead, forbiddenEmployees: forbidden,
-    allowedEmployees: allowed, candidateEmployees: candidate,
+    candidateEmployees: candidate,
   };
 }
 

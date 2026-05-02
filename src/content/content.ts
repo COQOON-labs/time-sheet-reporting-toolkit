@@ -9,6 +9,7 @@
 import { MSG_NAMESPACE, type WindowMessage, type SyncResult, type CapturedRequest, type SyncRequest, toSyncRequest } from '../lib/types.js';
 import { categorize, uid } from '../lib/identify.js';
 import { utf8Bytes } from '../lib/format.js';
+import { STORAGE_KEYS } from '../lib/constants.js';
 
 // ---------- 1. Bridge postMessage -> background ----------
 window.addEventListener('message', (event: MessageEvent<WindowMessage>) => {
@@ -165,8 +166,7 @@ function mountLauncher(): void {
   wrap.append(grip, iframe);
 
   // Restore last width
-  const STORED = 'a4p-panel-width';
-  const stored = Number(localStorage.getItem(STORED));
+  const stored = Number(localStorage.getItem(STORAGE_KEYS.panelWidth));
   if (stored && stored > 380) wrap.style.width = `${stored}px`;
 
   // Drag-to-resize
@@ -178,7 +178,7 @@ function mountLauncher(): void {
     iframe.style.pointerEvents = '';
     document.body.style.userSelect = '';
     const w = parseInt(wrap.style.width, 10);
-    if (Number.isFinite(w)) localStorage.setItem(STORED, String(w));
+    if (Number.isFinite(w)) localStorage.setItem(STORAGE_KEYS.panelWidth, String(w));
   }
   grip.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
