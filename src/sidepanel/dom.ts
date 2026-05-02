@@ -11,8 +11,3 @@ export function $<T extends Element = HTMLElement>(sel: string): T {
   if (!el) throw new Error(`Missing element: ${sel}`);
   return el;
 }
-
-/** All matches (for repeated UI like tab buttons). */
-export function $$<T extends Element = HTMLElement>(sel: string): NodeListOf<T> {
-  return document.querySelectorAll<T>(sel);
-}

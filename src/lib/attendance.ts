@@ -1,15 +1,15 @@
 /**
- * Re-export barrel — kept for backward compatibility with the original
- * monolithic module. New code should import from the focused modules
- * directly:
+ * Re-export barrel — narrow façade exposed to the sidepanel/UI layer.
  *
- *   - ./time-entries   → TimeEntry, normalizeRow, extractTimeEntries, filter/group/sum
- *   - ./name-index     → buildEmployeeIndex, buildProjectIndex, getOwnEmployee
- *   - ./overtime       → DailyOvertime, extractDailyOvertime
- *   - ./sync-planner   → planSyncUrls, monthWindows
- *   - ./diagnostics    → diagnoseTimeEntries, buildDebugLog (dev-only)
- *   - ./parse          → todayIso, isoDaysAgo, dateSeries, monthWindows, durationToHours, …
- *   - ./format         → fmtHours
+ * Only the symbols actually consumed by UI modules are re-exported here.
+ * Lib-internal helpers (`pick`, `pickLabel`, `parseTime`, `toIsoDate`,
+ * `durationToHours`, `monthWindows`, `safeStringify`, `derivePersonName`,
+ * `buildEmployeeIndex`, `buildProjectIndex`, `isLikelyTimeEntry`,
+ * `normalizeRow`, `TIME_PATH_HINTS`, `isoDaysAgo`, `dateSeries`) are
+ * kept module-local to make their usage easy to audit.
+ *
+ * UI code should keep importing from this barrel; tests + lib code
+ * should import from the focused modules directly.
  */
 
 export type { TimeEntry, DateRange } from './time-entries.js';
@@ -19,33 +19,23 @@ export {
   sumHours,
   groupHoursBy,
   sortedHoursMap,
-  inRange,
   exportEntriesCsv,
-  isLikelyTimeEntry,
-  normalizeRow,
 } from './time-entries.js';
 
-export { getOwnEmployee, buildEmployeeIndex, buildProjectIndex, derivePersonName } from './name-index.js';
+export { getOwnEmployee } from './name-index.js';
 
 export type { DailyOvertime } from './overtime.js';
 export { extractDailyOvertime } from './overtime.js';
 
-export { planSyncUrls, TIME_PATH_HINTS } from './sync-planner.js';
-
-export { diagnoseTimeEntries, buildDebugLog, diagnoseOvertime, type DiagRow, type DebugEntry, type OvertimeDiagGroup } from './diagnostics.js';
+export { planSyncUrls } from './sync-planner.js';
 
 export {
-  todayIso,
-  isoDaysAgo,
-  dateSeries,
-  monthWindows,
-  durationToHours,
-  parseTime,
-  toIsoDate,
-  pick,
-  pickLabel,
-  safeStringify,
-} from './parse.js';
+  diagnoseTimeEntries,
+  buildDebugLog,
+  diagnoseOvertime,
+  type DiagRow,
+  type DebugEntry,
+  type OvertimeDiagGroup,
+} from './diagnostics.js';
 
-// fmtHours used to live here; it's now in lib/format.
-export { fmtHours } from './format.js';
+export { todayIso } from './parse.js';

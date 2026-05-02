@@ -4,7 +4,6 @@
  */
 
 import { isPlainObject } from './walk.js';
-export { isPlainObject };
 
 /** Pick the first non-empty value matching any of `keys` in object `o`. */
 export function pick(o: Record<string, unknown>, keys: readonly string[]): unknown {

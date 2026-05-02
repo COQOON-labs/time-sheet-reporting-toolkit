@@ -7,11 +7,11 @@ import { STORAGE_KEYS } from './constants.js';
 
 type PrefKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS];
 
-export function readPref(key: PrefKey): string | null {
+function readPref(key: PrefKey): string | null {
   try { return localStorage.getItem(key); } catch { return null; }
 }
 
-export function writePref(key: PrefKey, value: string): void {
+function writePref(key: PrefKey, value: string): void {
   try { localStorage.setItem(key, value); } catch { /* quota / privacy mode */ }
 }
 
@@ -23,11 +23,4 @@ export function readPrefBool(key: PrefKey, fallback = false): boolean {
 
 export function writePrefBool(key: PrefKey, value: boolean): void {
   writePref(key, value ? '1' : '0');
-}
-
-export function readPrefNumber(key: PrefKey): number | null {
-  const v = readPref(key);
-  if (v === null) return null;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
 }
