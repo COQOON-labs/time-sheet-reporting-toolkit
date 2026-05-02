@@ -141,7 +141,7 @@ npm test
 ┌───────────────────────────────────────────▼─────────┐
 │  background.ts  (service worker)                    │
 │   ├─ persists to IndexedDB (90-day TTL)             │
-│   └─ list / clear / export / active-sync RPCs       │
+│   └─ list / clear / active-sync RPCs                │
 └─────────────────────────────────────────────────────┘
                                             ▲
 ┌───────────────────────────────────────────│─────────┐

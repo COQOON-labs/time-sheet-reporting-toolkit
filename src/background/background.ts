@@ -3,7 +3,7 @@
  * (via the shared storage helper) and responds to UI queries.
  */
 
-import { putRequest, listRequests, clearAll, exportAll, pruneOlderThan } from '../lib/storage.js';
+import { putRequest, listRequests, clearAll, pruneOlderThan } from '../lib/storage.js';
 import type { CapturedRequest, SyncResult, SyncRequest } from '../lib/types.js';
 
 /** Captures older than this are deleted at startup. */
@@ -13,7 +13,6 @@ type Incoming =
   | { kind: 'capture'; payload: CapturedRequest }
   | { kind: 'list'; limit?: number }
   | { kind: 'clear' }
-  | { kind: 'export' }
   | { kind: 'active-sync'; urls: SyncRequest[] };
 
 async function findPersonioTabId(): Promise<number | null> {
@@ -37,9 +36,6 @@ chrome.runtime.onMessage.addListener((msg: Incoming, _sender, sendResponse) => {
         case 'clear':
           await clearAll();
           sendResponse({ ok: true });
-          break;
-        case 'export':
-          sendResponse({ ok: true, json: await exportAll() });
           break;
         case 'active-sync': {
           const tabId = await findPersonioTabId();

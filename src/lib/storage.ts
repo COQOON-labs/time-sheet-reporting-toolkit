@@ -42,11 +42,6 @@ export async function clearAll(): Promise<void> {
   await d.clear(DB.store);
 }
 
-export async function exportAll(): Promise<string> {
-  const items = await listRequests(Number.MAX_SAFE_INTEGER);
-  return JSON.stringify({ exportedAt: new Date().toISOString(), items }, null, 2);
-}
-
 /**
  * Drop captures older than `cutoffMs` (epoch ms). Returns the count of
  * rows removed. Cheap because the `capturedAt` index is range-scanned.

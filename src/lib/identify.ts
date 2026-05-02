@@ -1,17 +1,16 @@
 /**
- * Best-effort categorization of a Personio request URL by pathname.
- * Used by inject (capture) + content (active-sync replay).
+ * Maps a captured URL to one of the coarse categories used by the
+ * dev-only Raw-requests filter. Only categories that can actually be
+ * produced by the inject allow-list (`STORE_PATH_RE`) are returned —
+ * keeping this list tight makes the dropdown reflect reality.
  */
-
 export function categorize(url: string): string {
   try {
     const p = new URL(url, location.href).pathname.toLowerCase();
-    if (p.includes('project-time') || p.includes('projecttime') || p.includes('project_time')) return 'project-time';
-    if (p.includes('attendance')) return 'attendance';
-    if (p.includes('absence') || p.includes('time-off') || p.includes('timeoff')) return 'absences';
-    if (p.includes('payroll') || p.includes('payslip')) return 'payroll';
-    if (p.includes('employee')) return 'employees';
+    if (p.includes('attendance') || p.includes('timesheet')) return 'attendance';
     if (p.includes('graphql')) return 'graphql';
+    if (p.includes('employee') || p.includes('person') || p.includes('people')) return 'directory';
+    if (p.includes('navigation') || p.includes('organization')) return 'org';
     return 'other';
   } catch {
     return 'other';

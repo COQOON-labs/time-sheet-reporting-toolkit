@@ -40,7 +40,6 @@ if (!DEV_UI) {
 const els = {
   status: $('#status') as HTMLParagraphElement,
   refresh: $('#refresh') as HTMLButtonElement,
-  exportBtn: $('#export') as HTMLButtonElement,
   clear: $('#clear') as HTMLButtonElement,
   dashDebug: $('#dash-debug') as HTMLButtonElement,
   tabs: document.querySelectorAll<HTMLButtonElement>('.tab'),
@@ -134,11 +133,6 @@ els.clear.addEventListener('click', async () => {
   if (!confirm('Delete all captured requests?')) return;
   await send('clear');
   await refresh();
-});
-
-els.exportBtn.addEventListener('click', async () => {
-  const r = await send('export');
-  download(r.json, `analytics-for-personio-${stamp()}.json`, 'application/json');
 });
 
 els.dashDebug.addEventListener('click', () => {
