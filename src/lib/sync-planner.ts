@@ -30,9 +30,10 @@ export function planSyncUrls(
   items: CapturedRequest[],
   from: string,
   to: string,
+  opts: { seedOrigin?: string | null } = {},
 ): SyncRequest[] {
   const months = monthWindows(from, to);
-  const ctx = analyzeHistory(items);
+  const ctx = analyzeHistory(items, opts.seedOrigin ?? null);
   const templates = extractTimesheetTemplates(items);
   const out: SyncRequest[] = [];
   const seen = new Set<string>();
@@ -45,9 +46,37 @@ export function planSyncUrls(
   };
 
   expandOverMonths(templates, months).forEach(push);
+
+  // First-run seed: we know the tenant origin (either from a passive
+  // capture or via chrome.tabs.query) and we know the user's own employee
+  // id (either from a captured /timesheet/{id} URL or from a /my-org
+  // response body). The user has not yet browsed any timesheet pages, so
+  // `templates` is empty. Speculatively probe the well-known /timesheet
+  // BFF variants — marked as probes so failures don't surface as scary
+  // errors. Whichever variant returns 200 will be captured and used as a
+  // real template on the next sync.
+  if (ctx.origin && ctx.ownEmployeeId && templates.length === 0) {
+    const seeded = seededTimesheetTemplates(ctx).filter(
+      (u) => !ctx.deadEndpoints.has(u.split('?')[0]!),
+    );
+    for (const r of expandOverMonths(seeded, months)) push({ ...r, probe: true });
+  }
+
   buildProbeRequests(ctx).forEach(push);
 
   return expandOverEmployees(out, ctx, months);
+}
+
+function seededTimesheetTemplates(ctx: HistoryContext): string[] {
+  const { origin, ownEmployeeId } = ctx;
+  if (!origin || !ownEmployeeId) return [];
+  // Personio ships at least these BFF variants across tenants; we don't
+  // know up front which one this tenant uses, so we list them all.
+  return [
+    `${origin}/svc/attendance-bff/v1/timesheet/${ownEmployeeId}?start_date=2000-01-01&end_date=2000-01-31`,
+    `${origin}/svc/attendance-bff/timesheet/${ownEmployeeId}?start_date=2000-01-01&end_date=2000-01-31`,
+    `${origin}/svc/attendance-api/v1/timesheet/${ownEmployeeId}?start_date=2000-01-01&end_date=2000-01-31`,
+  ];
 }
 
 // ---------- history analysis ----------------------------------------------
@@ -60,7 +89,7 @@ type HistoryContext = {
   candidateEmployees: Set<string>;
 };
 
-function analyzeHistory(items: CapturedRequest[]): HistoryContext {
+function analyzeHistory(items: CapturedRequest[], seedOrigin: string | null): HistoryContext {
   let origin: string | null = null;
   let ownEmployeeId: string | null = null;
   const dead = new Set<string>();
@@ -81,7 +110,14 @@ function analyzeHistory(items: CapturedRequest[]): HistoryContext {
       const m = TIMESHEET_URL_RE.exec(it.url);
       if (m) forbidden.add(m[1]!);
     }
+    if (!ownEmployeeId && it.bodyJson && /\/my-organization\b|\/me\b|\/current[-_]?user\b/i.test(it.url)) {
+      ownEmployeeId = findOwnIdInBody(it.bodyJson);
+    }
   }
+  // Fallback: caller already knows which Personio tab is open (via
+  // chrome.tabs.query) even before we've seen any captures — use that so
+  // first-run sync can immediately probe the well-known endpoints.
+  if (!origin && seedOrigin) origin = seedOrigin;
   const allowed = collectAllowedEmployeeIds(items);
   const candidate = allowed.size > 0 ? allowed : collectEmployeeIds(items);
   if (ownEmployeeId) candidate.add(ownEmployeeId);
@@ -90,6 +126,24 @@ function analyzeHistory(items: CapturedRequest[]): HistoryContext {
     deadEndpoints: dead, forbiddenEmployees: forbidden,
     candidateEmployees: candidate,
   };
+}
+
+function findOwnIdInBody(body: unknown): string | null {
+  let found: string | null = null;
+  walkObjects(body, (o) => {
+    if (found) return;
+    for (const k of ['me', 'self', 'current_user', 'currentUser', 'viewer']) {
+      const v = o[k];
+      if (isPlainObject(v)) {
+        const id = v.id ?? v.employee_id ?? v.person_id;
+        if (typeof id === 'string' || typeof id === 'number') {
+          found = String(id);
+          return;
+        }
+      }
+    }
+  });
+  return found;
 }
 
 // ---------- timesheet template extraction ---------------------------------

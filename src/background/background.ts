@@ -13,13 +13,23 @@ type Incoming =
   | { kind: 'capture'; payload: CapturedRequest }
   | { kind: 'list'; limit?: number }
   | { kind: 'clear' }
+  | { kind: 'get-origin' }
   | { kind: 'active-sync'; urls: SyncRequest[] };
 
-async function findPersonioTabId(): Promise<number | null> {
+async function findPersonioTab(): Promise<chrome.tabs.Tab | null> {
   const tabs = await chrome.tabs.query({ url: ['*://*.personio.de/*', '*://*.personio.com/*'] });
   // Prefer the active tab if any; otherwise first match.
-  const active = tabs.find((t) => t.active) ?? tabs[0];
-  return active?.id ?? null;
+  return tabs.find((t) => t.active) ?? tabs[0] ?? null;
+}
+
+async function findPersonioTabId(): Promise<number | null> {
+  return (await findPersonioTab())?.id ?? null;
+}
+
+async function findPersonioOrigin(): Promise<string | null> {
+  const tab = await findPersonioTab();
+  if (!tab?.url) return null;
+  try { return new URL(tab.url).origin; } catch { return null; }
 }
 
 chrome.runtime.onMessage.addListener((msg: Incoming, _sender, sendResponse) => {
@@ -36,6 +46,9 @@ chrome.runtime.onMessage.addListener((msg: Incoming, _sender, sendResponse) => {
         case 'clear':
           await clearAll();
           sendResponse({ ok: true });
+          break;
+        case 'get-origin':
+          sendResponse({ ok: true, origin: await findPersonioOrigin() });
           break;
         case 'active-sync': {
           const tabId = await findPersonioTabId();

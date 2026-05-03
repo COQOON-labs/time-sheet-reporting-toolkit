@@ -13,6 +13,7 @@ import type { CapturedRequest, SyncRequest, SyncResult } from '../lib/types.js';
 type RequestMap = {
   list: { req: { limit?: number }; res: { items: CapturedRequest[] } };
   clear: { req: Record<string, never>; res: Record<string, never> };
+  'get-origin': { req: Record<string, never>; res: { origin: string | null } };
   'active-sync': { req: { urls: SyncRequest[] }; res: { result: SyncResult } };
 };
 
