@@ -24,7 +24,9 @@ type SyncDeps = {
 
 let deps: SyncDeps | null = null;
 let tickHandle: ReturnType<typeof setInterval> | null = null;
+let retryHandle: ReturnType<typeof setTimeout> | null = null;
 let syncDoneHandler: () => void = () => void 0;
+let refreshStateHandler: () => Promise<void> = async () => void 0;
 
 export function wireSync(d: SyncDeps): void {
   deps = d;
@@ -39,6 +41,12 @@ export function wireSync(d: SyncDeps): void {
 
 export function onSyncDoneRegister(fn: () => void): void {
   syncDoneHandler = fn;
+}
+
+/** Called by the retry path to pull freshly-captured requests into state
+ *  before we re-plan sync URLs. */
+export function onRefreshStateRegister(fn: () => Promise<void>): void {
+  refreshStateHandler = fn;
 }
 
 /** Run sync now if auto-sync is on and (force or interval elapsed). */
@@ -58,8 +66,21 @@ export async function runSync(opts: { silent?: boolean } = {}): Promise<void> {
   if (urls.length === 0) {
     if (!opts.silent) {
       els.syncStatus.textContent =
-        'No time-tracking endpoints learned yet. Open Personio\'s Attendance or Project-Time page once so the extension can discover the URLs, then click Sync again.';
+        'Waiting for Personio data… open or reload the Attendance / Project-Time page in another tab so the extension can learn the endpoints, then click Sync again.';
       els.syncStatus.style.color = 'var(--amber)';
+    }
+    // Keep retrying silently every few seconds so the user usually does
+    // not have to click Sync again after the page finishes loading.
+    if (!retryHandle) {
+      retryHandle = setTimeout(() => {
+        retryHandle = null;
+        if (!deps) return;
+        // Pull any captures that arrived in the meantime, then re-plan.
+        void refreshStateHandler().then(() => {
+          if (!deps) return;
+          if (deps.els.dashAutoSync.checked) void runSync({ silent: true });
+        });
+      }, 4_000);
     }
     return;
   }
@@ -72,9 +93,12 @@ export async function runSync(opts: { silent?: boolean } = {}): Promise<void> {
     const res = await send('active-sync', { urls });
     const r = res.result;
     setState({ lastSyncResult: r, lastAutoSyncAt: Date.now() });
+    // Probe outcomes are tracked in details[].probe but not in r.failed.
+    const probeMisses = r.details.filter((d) => d.probe && !d.ok).length;
+    const probeNote = probeMisses > 0 ? ` (· ${probeMisses} optional probe${probeMisses === 1 ? '' : 's'} skipped)` : '';
     els.syncStatus.style.color = r.failed > 0 ? 'var(--amber)' : 'var(--green)';
     els.syncStatus.textContent =
-      `Sync done: ${r.fetched} ok, ${r.failed} failed` +
+      `Sync done: ${r.fetched} ok, ${r.failed} failed${probeNote}` +
       (r.errors.length ? ` — first error: ${r.errors[0]}` : '');
     syncDoneHandler();
   } catch (err) {

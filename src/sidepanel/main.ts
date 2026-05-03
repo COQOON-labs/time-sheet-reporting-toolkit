@@ -24,6 +24,7 @@ import {
   syncDashboardFiltersFromState,
   kickoffInitialAutoSync,
   onSyncDoneRegister,
+  onRefreshStateRegister,
   currentRange,
 } from './dashboard.js';
 
@@ -163,6 +164,7 @@ wireDashboard({
   onAutoSyncChange: (checked) => writePrefBool(STORAGE_KEYS.autoSync, checked),
 });
 onSyncDoneRegister(() => { void refresh(); });
+onRefreshStateRegister(() => refresh());
 
 void (async () => {
   await loadDevTabsIfNeeded();

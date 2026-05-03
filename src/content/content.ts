@@ -92,13 +92,22 @@ chrome.runtime.onMessage.addListener((msg: { kind: string; urls?: SyncRequest[] 
           }
         }
         const ok = res.ok && bodyJson != null;
-        result.details.push({ url, status: res.status, bytes, arrays, rows, ok });
+        result.details.push({ url, status: res.status, bytes, arrays, rows, ok, probe: req.probe });
         if (ok) result.fetched += 1;
-        else { result.failed += 1; result.errors.push(`${res.status} ${url}`); }
+        else if (req.probe) {
+          // Probes are expected to fail for routes that don't exist on this
+          // tenant — don't surface them as user-visible errors.
+        } else {
+          result.failed += 1; result.errors.push(`${res.status} ${url}`);
+        }
       } catch (err) {
-        result.failed += 1;
-        result.errors.push(`${String(err)} ${url}`);
-        result.details.push({ url, status: 0, bytes: 0, arrays: 0, rows: 0, ok: false });
+        if (req.probe) {
+          result.details.push({ url, status: 0, bytes: 0, arrays: 0, rows: 0, ok: false, probe: true });
+        } else {
+          result.failed += 1;
+          result.errors.push(`${String(err)} ${url}`);
+          result.details.push({ url, status: 0, bytes: 0, arrays: 0, rows: 0, ok: false });
+        }
       }
     }
     sendResponse(result);

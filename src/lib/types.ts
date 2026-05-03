@@ -33,6 +33,13 @@ export type SyncRequest = {
   method?: 'GET' | 'POST';
   body?: unknown;
   headers?: Record<string, string>;
+  /**
+   * If true, this request is a *probe* against an endpoint we are not
+   * sure exists for the current tenant (Personio ships several BFF
+   * variants). 4xx outcomes are expected and must not be reported as
+   * errors to the user — they're how we learn which routes are dead.
+   */
+  probe?: boolean;
 };
 
 export function toSyncRequest(v: string | SyncRequest): SyncRequest {
@@ -44,5 +51,5 @@ export type SyncResult = {
   failed: number;
   errors: string[];
   /** Per-URL outcome for debugging which endpoints returned what. */
-  details: Array<{ url: string; status: number; bytes: number; arrays: number; rows: number; ok: boolean }>;
+  details: Array<{ url: string; status: number; bytes: number; arrays: number; rows: number; ok: boolean; probe?: boolean }>;
 };

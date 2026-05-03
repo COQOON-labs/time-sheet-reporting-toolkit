@@ -177,6 +177,7 @@ function buildProbeRequests(ctx: HistoryContext): SyncRequest[] {
     out.push({
       url: gqlUrl,
       method: 'POST',
+      probe: true,
       body: {
         operationName: 'TM_TrackableProjects_v2025091101',
         query: 'TM_TrackableProjects_v2025091101',
@@ -190,7 +191,7 @@ function buildProbeRequests(ctx: HistoryContext): SyncRequest[] {
     `${origin}/svc/attendance-bff/v1/projects`,
     `${origin}/svc/attendance-api/v1/projects`,
   ]) {
-    if (!isDead(p)) out.push({ url: p, method: 'GET' });
+    if (!isDead(p)) out.push({ url: p, method: 'GET', probe: true });
   }
 
   const peopleListUrl = `${origin}/people-list/bff/data`;
@@ -198,12 +199,13 @@ function buildProbeRequests(ctx: HistoryContext): SyncRequest[] {
     out.push({
       url: peopleListUrl,
       method: 'POST',
+      probe: true,
       body: { filters: {}, page: 0, pageSize: 1000 },
     });
   }
 
   const orgUrl = `${origin}/platform/dashboard/api/v1/my-organization`;
-  if (!isDead(orgUrl)) out.push({ url: orgUrl, method: 'GET' });
+  if (!isDead(orgUrl)) out.push({ url: orgUrl, method: 'GET', probe: true });
 
   return out;
 }

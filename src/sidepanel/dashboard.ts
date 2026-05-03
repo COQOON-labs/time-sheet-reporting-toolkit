@@ -24,7 +24,7 @@ import { $ } from './dom.js';
 import { buildReportHtml } from './report-html.js';
 import { wireSync, maybeAutoSync } from './sync-controller.js';
 
-export { onSyncDoneRegister } from './sync-controller.js';
+export { onSyncDoneRegister, onRefreshStateRegister } from './sync-controller.js';
 
 Chart.register(
   BarController, BarElement,
