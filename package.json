@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "description": "Browser extension that collects Personio API responses and renders an in-page analytics sidepanel.",
+  "license": "MIT",
+  "author": "Benjamin Gröner",
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -246,4 +246,6 @@ keeping it a thin shell over the tested libs.
 
 ## 📜 License
 
-Personal / internal tooling. Not affiliated with Personio SE & Co. KG.
+[MIT](LICENSE) © Benjamin Gröner.
+
+Not affiliated with Personio SE & Co. KG.
