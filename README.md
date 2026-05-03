@@ -47,20 +47,6 @@ without your data ever leaving your machine.
 - **90-day retention:** the background worker prunes stale rows on
   every write.
 
-### Dev-only tabs
-
-Hidden in production; visible when running `npm run dev` or with
-`?dev=1` in the URL:
-
-- **Raw** — every captured request with body preview, search and
-  category filter.
-- **Reports** — heuristic grouping of captured JSON arrays into generic
-  tables with sort + filter + CSV.
-- **Diagnostics** — explains why each captured array was kept or
-  rejected by the time-entry detector. Includes overtime detector
-  diagnostics + a one-click debug bundle (range, planned sync URLs,
-  last sync result, all captures redacted to metadata).
-
 ---
 
 ## 🚀 Getting started
@@ -78,7 +64,7 @@ Then load the unpacked extension in Chrome:
 4. Visit your Personio tenant — the floating **📊 Reporting** button
    appears bottom-right. Click it to open the dashboard.
 
-For development with HMR + dev-only tabs:
+For development with HMR:
 
 ```bash
 npm run dev
