@@ -30,7 +30,12 @@ export function planSyncUrls(
   items: CapturedRequest[],
   from: string,
   to: string,
-  opts: { seedOrigin?: string | null; ownEmployeeIdHint?: string | null } = {},
+  opts: {
+    seedOrigin?: string | null;
+    ownEmployeeIdHint?: string | null;
+    /** When true, ignore the incremental cache and refetch every month. */
+    force?: boolean;
+  } = {},
 ): SyncRequest[] {
   const months = monthWindows(from, to);
   const ctx = analyzeHistory(items, opts.seedOrigin ?? null, opts.ownEmployeeIdHint ?? null);
@@ -64,7 +69,61 @@ export function planSyncUrls(
 
   buildProbeRequests(ctx).forEach(push);
 
-  return expandOverEmployees(out, ctx, months);
+  const expanded = expandOverEmployees(out, ctx, months);
+  return opts.force ? expanded : skipAlreadyCachedMonths(expanded, items);
+}
+
+/**
+ * Incremental cache: drop URLs that target a closed past month whose
+ * (path, start_date, end_date) we have a 2xx capture for already. The
+ * current month and the previous month are always re-fetched because
+ * Personio time entries are routinely backdated/edited within that
+ * window. Probes are never skipped — they are cheap and the planner uses
+ * them to learn endpoints, not to fetch payload.
+ */
+function skipAlreadyCachedMonths(
+  reqs: SyncRequest[],
+  items: CapturedRequest[],
+): SyncRequest[] {
+  // (pathOnly, start, end) -> true once we have a 2xx for this exact slice
+  const cached = new Set<string>();
+  for (const it of items) {
+    if (it.status < 200 || it.status >= 300) continue;
+    try {
+      const u = new URL(it.url);
+      const start = pickParam(u, DATE_PARAM_KEYS);
+      const end = pickParam(u, END_PARAM_KEYS);
+      if (!start || !end) continue;
+      cached.add(`${u.origin}${u.pathname}|${start}|${end}`);
+    } catch { /* ignore */ }
+  }
+
+  // Boundary: the first day of the previous calendar month. Any month
+  // whose end_date is strictly before this is "closed" and safe to skip
+  // when already cached.
+  const now = new Date();
+  const closedBefore = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1))
+    .toISOString().slice(0, 10);
+
+  return reqs.filter((r) => {
+    if (r.probe) return true;
+    let u: URL;
+    try { u = new URL(r.url); } catch { return true; }
+    const start = pickParam(u, DATE_PARAM_KEYS);
+    const end = pickParam(u, END_PARAM_KEYS);
+    if (!start || !end) return true;
+    if (end >= closedBefore) return true; // recent enough — always refetch
+    const key = `${u.origin}${u.pathname}|${start}|${end}`;
+    return !cached.has(key);
+  });
+}
+
+function pickParam(u: URL, keys: readonly string[]): string | null {
+  for (const k of keys) {
+    const v = u.searchParams.get(k);
+    if (v) return v;
+  }
+  return null;
 }
 
 function seededTimesheetTemplates(ctx: HistoryContext): string[] {
