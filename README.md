@@ -63,7 +63,7 @@ without your data ever leaving your machine.
 The fastest way to use the extension is to grab the prebuilt zip from
 the [latest GitHub release][latest-release]:
 
-[latest-release]: https://github.com/COQOON-labs/personio-reports-browser-plugin/releases/latest
+[latest-release]: https://github.com/COQOON-labs/time-sheet-reporting-toolkit/releases/latest
 
 1. Open the [latest release page][latest-release].
 2. Download the asset named `time-sheet-reporting-toolkit-vX.Y.Z.zip`.
