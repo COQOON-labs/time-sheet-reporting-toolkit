@@ -45,6 +45,8 @@ const els = {
   dashSync: $('#dash-sync') as HTMLButtonElement,
   dashAutoSync: $('#dash-auto-sync') as HTMLInputElement,
   syncStatus: $('#sync-status') as HTMLElement,
+  syncProgress: $('#sync-progress') as HTMLElement,
+  syncProgressText: $('#sync-progress-text') as HTMLElement,
   kpiHours: $('#kpi-hours') as HTMLElement,
   kpiOvertime: $('#kpi-overtime') as HTMLElement,
   kpiEntries: $('#kpi-entries') as HTMLElement,
@@ -368,6 +370,8 @@ export function wireDashboard(opts: {
       dashSync: els.dashSync,
       dashAutoSync: els.dashAutoSync,
       syncStatus: els.syncStatus,
+      syncProgress: els.syncProgress,
+      syncProgressText: els.syncProgressText,
     },
     getRange: currentRange,
   });

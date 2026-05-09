@@ -15,6 +15,8 @@ type SyncEls = {
   dashSync: HTMLButtonElement;
   dashAutoSync: HTMLInputElement;
   syncStatus: HTMLElement;
+  syncProgress: HTMLElement;
+  syncProgressText: HTMLElement;
 };
 
 type SyncDeps = {
@@ -25,6 +27,7 @@ type SyncDeps = {
 let deps: SyncDeps | null = null;
 let tickHandle: ReturnType<typeof setInterval> | null = null;
 let retryHandle: ReturnType<typeof setTimeout> | null = null;
+let progressListenerWired = false;
 let syncDoneHandler: () => void = () => void 0;
 let refreshStateHandler: () => Promise<void> = async () => void 0;
 
@@ -37,6 +40,47 @@ export function wireSync(d: SyncDeps): void {
   if (tickHandle === null) {
     tickHandle = setInterval(() => maybeAutoSync(false), TICK_MS);
   }
+  wireProgressListener();
+}
+
+/**
+ * Listen for `sync-progress` beacons broadcast by the content script as
+ * each URL completes. Updates the dashboard progress bar non-blockingly.
+ */
+function wireProgressListener(): void {
+  if (progressListenerWired) return;
+  progressListenerWired = true;
+  chrome.runtime.onMessage.addListener((msg: unknown) => {
+    if (
+      !msg || typeof msg !== 'object' ||
+      (msg as { kind?: unknown }).kind !== 'sync-progress'
+    ) return;
+    const { completed, total } = msg as { completed?: unknown; total?: unknown };
+    if (typeof completed !== 'number' || typeof total !== 'number') return;
+    if (!deps) return;
+    showProgress(completed, total);
+  });
+}
+
+function showProgress(completed: number, total: number): void {
+  if (!deps) return;
+  const { syncProgress, syncProgressText } = deps.els;
+  syncProgress.hidden = false;
+  syncProgress.classList.add('is-determinate');
+  const pct = total > 0 ? Math.min(100, Math.round((completed / total) * 100)) : 0;
+  const bar = syncProgress.querySelector<HTMLElement>('.sync-progress__bar');
+  if (bar) bar.style.width = `${pct}%`;
+  syncProgressText.textContent = total > 0 ? `${completed}/${total}` : '';
+}
+
+function hideProgress(): void {
+  if (!deps) return;
+  const { syncProgress, syncProgressText } = deps.els;
+  syncProgress.hidden = true;
+  syncProgress.classList.remove('is-determinate');
+  syncProgressText.textContent = '';
+  const bar = syncProgress.querySelector<HTMLElement>('.sync-progress__bar');
+  if (bar) bar.style.width = '';
 }
 
 export function onSyncDoneRegister(fn: () => void): void {
@@ -110,6 +154,9 @@ export async function runSync(opts: { silent?: boolean } = {}): Promise<void> {
   els.syncStatus.style.color = '';
   els.syncStatus.textContent =
     `${opts.silent ? 'Auto-syncing' : 'Syncing'} ${urls.length} request(s) for ${range.from} → ${range.to}…`;
+  // Show progress bar immediately. The content script will switch us into
+  // determinate mode as soon as it starts emitting per-URL beacons.
+  showProgress(0, urls.length);
   try {
     const res = await send('active-sync', { urls });
     const r = res.result;
@@ -132,5 +179,6 @@ export async function runSync(opts: { silent?: boolean } = {}): Promise<void> {
   } finally {
     setState({ syncInFlight: false });
     els.dashSync.disabled = false;
+    hideProgress();
   }
 }

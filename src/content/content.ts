@@ -32,8 +32,24 @@ chrome.runtime.onMessage.addListener((msg: { kind: string; urls?: SyncRequest[] 
   const urls = msg.urls;
   void (async () => {
     const result: SyncResult = { fetched: 0, failed: 0, errors: [], details: [] };
+    const total = urls.length;
+    // Best-effort progress beacon — broadcasts to any extension context
+    // (sidepanel iframe). Failures are ignored: progress is purely
+    // cosmetic, the real result is delivered via sendResponse below.
+    const emit = (completed: number, currentUrl?: string): void => {
+      try {
+        void chrome.runtime.sendMessage({
+          kind: 'sync-progress',
+          completed,
+          total,
+          currentUrl,
+        });
+      } catch { /* no listener */ }
+    };
+    emit(0, total > 0 ? urls[0]?.url ?? urls[0] as unknown as string : undefined);
     // Run sequentially to avoid overwhelming the server / triggering rate limits.
-    for (const item of urls) {
+    for (let i = 0; i < urls.length; i++) {
+      const item = urls[i]!;
       const raw = toSyncRequest(item);
       const req = { ...raw, method: raw.method ?? ('GET' as const) };
       const url = req.url;
@@ -119,6 +135,13 @@ chrome.runtime.onMessage.addListener((msg: { kind: string; urls?: SyncRequest[] 
           result.details.push({ url, status: 0, bytes: 0, arrays: 0, rows: 0, ok: false });
         }
       }
+      const next = urls[i + 1];
+      const nextUrl = typeof next === 'string'
+        ? next
+        : next && typeof next === 'object'
+          ? (next as { url?: string }).url
+          : undefined;
+      emit(i + 1, nextUrl);
     }
     sendResponse(result);
   })();

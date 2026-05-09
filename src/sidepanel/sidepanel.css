@@ -111,6 +111,51 @@ button.primary:disabled { opacity: .6; cursor: progress; }
 .auto-sync-label input { margin: 0; }
 .sync-status { margin: 0; font-size: 11px; min-height: 14px; }
 
+/*
+ * Non-blocking sync progress indicator. Sits in the dashboard header,
+ * does not overlay the dashboard content, and animates either as a
+ * sliding indeterminate stripe (before any progress beacon arrives) or
+ * as a smooth determinate fill once we know completed/total. Hidden via
+ * the [hidden] attribute when not syncing.
+ */
+.sync-progress {
+  position: relative;
+  height: 4px;
+  margin-top: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.sync-progress[hidden] { display: none; }
+.sync-progress__bar {
+  position: absolute;
+  inset: 0;
+  width: 30%;
+  background: linear-gradient(90deg, var(--accent), #a78bfa);
+  border-radius: 2px;
+  transition: width 200ms ease-out;
+  /* Indeterminate slide while determinate width is unknown. */
+  animation: sync-progress-indeterminate 1.4s ease-in-out infinite;
+}
+.sync-progress.is-determinate .sync-progress__bar {
+  animation: none;
+  left: 0;
+}
+.sync-progress__text {
+  position: absolute;
+  right: 0;
+  top: 6px;
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+  pointer-events: none;
+}
+@keyframes sync-progress-indeterminate {
+  0%   { left: -30%; width: 30%; }
+  50%  { left:  35%; width: 40%; }
+  100% { left: 100%; width: 30%; }
+}
+
 .kpis {
   display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px;
   padding: 12px 14px; background: #fff; border-bottom: 1px solid var(--border);

@@ -70,6 +70,16 @@
           <button id="dash-debug" class="ghost" title="Download a debug JSON of all time-related captures so the dev can analyze field shapes" data-dev-only>🐛 Debug log</button>
         </div>
         <p id="sync-status" class="sync-status muted"></p>
+        <!--
+          Slim non-blocking progress bar — visible only while a sync is in
+          flight. Switches between an indeterminate stripe (before the first
+          'sync-progress' beacon arrives) and a determinate fill (once the
+          content script reports completed/total).
+        -->
+        <div id="sync-progress" class="sync-progress" hidden role="progressbar" aria-label="Sync progress">
+          <div class="sync-progress__bar"></div>
+          <span id="sync-progress-text" class="sync-progress__text"></span>
+        </div>
       </header>
 
       <section class="kpis">
