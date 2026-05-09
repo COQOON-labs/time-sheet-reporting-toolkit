@@ -350,8 +350,6 @@ export function wireDashboard(opts: {
         search: els.dashSearch.value || '',
       },
       entries: filtered,
-      overtimeMinutes: sumOvertimeMinutes(range, els.dashEmployee.value),
-      printHelperUrl: chrome.runtime.getURL('print-helper.js'),
     });
     // Use a Blob URL instead of a `data:` URL: Blob URLs are scoped to the
     // creating origin, never appear in the URL bar / history with the data
