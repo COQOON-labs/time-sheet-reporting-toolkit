@@ -1,11 +1,20 @@
-# 📊 Reporting for Personio
+# 📊 Time Sheet Reporting Toolkit
 
 A Chrome (Manifest V3) extension that turns your everyday Personio
-browsing into a personal time-tracking analytics tool. It silently
+browsing into a personal time-tracking reporting tool. It silently
 captures the API responses your Personio tab is already loading, stores
 them locally in IndexedDB, and renders an in-page **dashboard** with
 filters, charts, KPIs, CSV export and a printable HTML report — all
 without your data ever leaving your machine.
+
+> ⚠️ **Unofficial third-party tool.** This project is **not affiliated
+> with, endorsed by, or sponsored by Personio SE**. "Personio" is a
+> trademark of its respective owner and is used here purely descriptively
+> to indicate the platform this tool reads data from. The extension only
+> queries data your own browser session is already authorized to access.
+> Use at your own risk and in accordance with your employer's IT,
+> data-protection, and acceptable-use policies. The author provides no
+> warranty — see [`LICENSE`](LICENSE).
 
 > **Privacy first.** No external server, no telemetry, no analytics SDK.
 > Captures stay in your browser and are auto-deleted after 90 days.

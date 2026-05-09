@@ -250,7 +250,7 @@ chrome.runtime.onMessage.addListener((msg: Incoming, _sender, sendResponse) => {
 
 chrome.runtime.onInstalled.addListener(() => {
   if (import.meta.env.DEV) {
-    console.info('[Reporting for Personio] installed');
+    console.info('[Time Sheet Reporting Toolkit] installed');
   }
   void pruneOlderThan(Date.now() - RETENTION_MS);
 });

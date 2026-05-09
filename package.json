@@ -1,8 +1,8 @@
 {
-  "name": "analytics-for-personio",
+  "name": "time-sheet-reporting-toolkit",
   "version": "0.1.0",
   "private": true,
-  "description": "Browser extension that collects Personio API responses and renders an in-page analytics sidepanel.",
+  "description": "Unofficial third-party browser extension. Locally captures your own time-tracking data on Personio and renders an in-page reporting sidepanel. Not affiliated with Personio SE.",
   "license": "MIT",
   "author": "Benjamin Gröner",
   "type": "module",
@@ -10,7 +10,7 @@
     "dev": "vite",
     "build": "vite build",
     "test": "vitest run",
-    "zip": "npm run build && cd dist && zip -r ../analytics-for-personio.zip ."
+    "zip": "npm run build && cd dist && zip -r ../time-sheet-reporting-toolkit.zip ."
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.0.0-beta.25",

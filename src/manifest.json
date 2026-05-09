@@ -1,11 +1,11 @@
 {
   "manifest_version": 3,
-  "name": "Reporting for Personio",
+  "name": "Time Sheet Reporting Toolkit",
   "version": "0.1.0",
-  "description": "Collects Personio API responses and renders an in-page reporting sidepanel with filters, search and charts.",
+  "description": "Unofficial third-party tool. Locally captures your own time-tracking data on Personio (personio.de / .com) and renders an in-page reporting sidepanel. Not affiliated with or endorsed by Personio SE.",
   "minimum_chrome_version": "114",
   "action": {
-    "default_title": "Reporting for Personio",
+    "default_title": "Time Sheet Reporting Toolkit",
     "default_popup": "src/popup/popup.html",
     "default_icon": {
       "16": "src/icons/icon-16.png",

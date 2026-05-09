@@ -146,6 +146,6 @@ declare global {
 
   // Console marker so users can verify activation in DevTools (DEV builds only).
   if (import.meta.env.DEV) {
-    console.info('%c[Reporting for Personio] interceptor installed', 'color:#7c3aed;font-weight:bold');
+    console.info('%c[Time Sheet Reporting Toolkit] interceptor installed', 'color:#7c3aed;font-weight:bold');
   }
 })();
