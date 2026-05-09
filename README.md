@@ -58,20 +58,46 @@ without your data ever leaving your machine.
 
 ---
 
-## 🚀 Getting started
+## ⬇️ Download & install (no build required)
+
+The fastest way to use the extension is to grab the prebuilt zip from
+the [latest GitHub release][latest-release]:
+
+[latest-release]: https://github.com/COQOON-labs/personio-reports-browser-plugin/releases/latest
+
+1. Open the [latest release page][latest-release].
+2. Download the asset named `time-sheet-reporting-toolkit-vX.Y.Z.zip`.
+3. **Unzip** it into a folder you'll keep around (e.g.
+   `~/Applications/time-sheet-reporting-toolkit/`). Chrome needs the
+   unpacked folder on disk — don't load the zip directly.
+4. In Chrome (or any Chromium-based browser: Edge, Brave, Arc, …) open
+   `chrome://extensions`.
+5. Toggle **Developer mode** (top right).
+6. Click **Load unpacked** and pick the **unzipped folder**.
+7. Open your Personio tenant (`*.personio.de` or `*.personio.com`).
+   A floating **📊 Reporting** button appears in the bottom-right corner —
+   click it to open the dashboard.
+
+> ℹ️ **Updating:** download the new release zip, replace the contents of
+> the same folder, and click the ↻ refresh icon next to the extension on
+> `chrome://extensions`. Your locally captured data stays in IndexedDB.
+
+> 🔒 Chrome will show a yellow *"Disable developer-mode extensions"*
+> banner at startup — that's the standard warning for any unpacked
+> extension and is unrelated to this tool's behavior.
+
+---
+
+## 🛠 Build from source
+
+If you'd rather build it yourself:
 
 ```bash
 npm install
 npm run build
 ```
 
-Then load the unpacked extension in Chrome:
-
-1. Open `chrome://extensions`
-2. Enable **Developer mode** (top right)
-3. Click **Load unpacked** and select the `dist/` folder
-4. Visit your Personio tenant — the floating **📊 Reporting** button
-   appears bottom-right. Click it to open the dashboard.
+Then follow steps 4–7 above, picking the `dist/` folder instead.
 
 For development with HMR:
 
