@@ -22,14 +22,61 @@ async function findPersonioTab(): Promise<chrome.tabs.Tab | null> {
   return tabs.find((t) => t.active) ?? tabs[0] ?? null;
 }
 
-async function findPersonioTabId(): Promise<number | null> {
-  return (await findPersonioTab())?.id ?? null;
-}
-
 async function findPersonioOrigin(): Promise<string | null> {
   const tab = await findPersonioTab();
   if (!tab?.url) return null;
   try { return new URL(tab.url).origin; } catch { return null; }
+}
+
+/**
+ * Resolve the (possibly bundler-rewritten) content-script file paths from
+ * the runtime manifest, so chrome.scripting.executeScript injects exactly
+ * what the regular auto-injection would have loaded.
+ */
+function contentScriptFiles(): string[] {
+  const cs = chrome.runtime.getManifest().content_scripts ?? [];
+  return cs.flatMap((s) => s.js ?? []);
+}
+
+/**
+ * Send the active-sync request to the Personio tab's content script. If the
+ * content script isn't loaded yet (common after extension install/reload
+ * against a tab that hasn't been refreshed), inject it on the fly via
+ * chrome.scripting and retry once. Surfaces a friendly error if that still
+ * fails — most often because the tab is on a non-matching subdomain.
+ */
+async function sendToContentScript(
+  tab: chrome.tabs.Tab,
+  urls: SyncRequest[],
+): Promise<SyncResult> {
+  const tabId = tab.id;
+  if (tabId == null) throw new Error('Personio tab has no id.');
+  const send = (): Promise<SyncResult> =>
+    chrome.tabs.sendMessage<unknown, SyncResult>(tabId, { kind: 'cs-fetch', urls });
+  try {
+    return await send();
+  } catch (err) {
+    const msg = String(err);
+    const noReceiver = /Receiving end does not exist|Could not establish connection/i.test(msg);
+    if (!noReceiver) throw err;
+    // Content script missing — try to inject and retry once.
+    try {
+      const files = contentScriptFiles();
+      if (files.length === 0) throw new Error('manifest lists no content scripts');
+      await chrome.scripting.executeScript({ target: { tabId }, files });
+    } catch (injectErr) {
+      throw new Error(
+        `Could not reach Personio tab. Refresh the Personio page and try again. (${String(injectErr)})`,
+      );
+    }
+    try {
+      return await send();
+    } catch (retryErr) {
+      throw new Error(
+        `Could not reach Personio tab after injecting helper. Refresh the Personio page and try again. (${String(retryErr)})`,
+      );
+    }
+  }
 }
 
 chrome.runtime.onMessage.addListener((msg: Incoming, _sender, sendResponse) => {
@@ -51,15 +98,12 @@ chrome.runtime.onMessage.addListener((msg: Incoming, _sender, sendResponse) => {
           sendResponse({ ok: true, origin: await findPersonioOrigin() });
           break;
         case 'active-sync': {
-          const tabId = await findPersonioTabId();
-          if (tabId == null) {
+          const tab = await findPersonioTab();
+          if (tab?.id == null) {
             sendResponse({ ok: false, error: 'No Personio tab open. Open Personio in a tab first.' });
             break;
           }
-          const result = await chrome.tabs.sendMessage<unknown, SyncResult>(
-            tabId,
-            { kind: 'cs-fetch', urls: msg.urls },
-          );
+          const result = await sendToContentScript(tab, msg.urls);
           sendResponse({ ok: true, result });
           break;
         }
