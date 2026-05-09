@@ -62,15 +62,28 @@ export async function runSync(opts: { silent?: boolean } = {}): Promise<void> {
   if (state.syncInFlight) return;
   const { els, getRange } = deps;
   const range = getRange();
-  // Ask the background for the open Personio tab's origin so we can plan
-  // probe URLs even on the very first sync — before any passive captures
-  // have landed in IndexedDB.
+  // Ask the background for both the open Personio tab's origin AND a
+  // persisted identity hint (own employee id, sniffed from past captures
+  // and stored in chrome.storage.local). The hint survives Clear-cache,
+  // so the planner can keep building seeded probes even when IndexedDB
+  // was just emptied — no need for the user to reload the Personio tab.
   let seedOrigin: string | null = null;
+  let ownEmployeeIdHint: string | null = null;
   try {
-    const r = await send('get-origin', {});
-    seedOrigin = (r as { origin?: string | null }).origin ?? null;
-  } catch { /* old background, no get-origin handler — fall back to history-only */ }
-  const urls = planSyncUrls(state.allItems, range.from, range.to, { seedOrigin });
+    const r = await send('get-identity', {});
+    seedOrigin = r.origin;
+    ownEmployeeIdHint = r.ownEmployeeId;
+  } catch {
+    // Older background build — fall back to origin-only.
+    try {
+      const r = await send('get-origin', {});
+      seedOrigin = (r as { origin?: string | null }).origin ?? null;
+    } catch { /* history-only */ }
+  }
+  const urls = planSyncUrls(state.allItems, range.from, range.to, {
+    seedOrigin,
+    ownEmployeeIdHint,
+  });
   if (urls.length === 0) {
     if (!opts.silent) {
       els.syncStatus.textContent =

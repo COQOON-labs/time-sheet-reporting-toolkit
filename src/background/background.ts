@@ -5,15 +5,26 @@
 
 import { putRequest, listRequests, clearAll, pruneOlderThan } from '../lib/storage.js';
 import type { CapturedRequest, SyncResult, SyncRequest } from '../lib/types.js';
+import { TIMESHEET_URL_RE } from '../lib/constants.js';
 
 /** Captures older than this are deleted at startup. */
 const RETENTION_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
+
+/**
+ * chrome.storage.local key holding the identity hint. Survives clearAll()
+ * (which only wipes IndexedDB) so the planner can still build seeded
+ * timesheet probes immediately after the user empties the cache, instead
+ * of producing an empty plan and forcing them to reload the page.
+ */
+const IDENTITY_KEY = 'a4p-identity';
+type IdentityHint = { origin?: string | null; ownEmployeeId?: string | null };
 
 type Incoming =
   | { kind: 'capture'; payload: CapturedRequest }
   | { kind: 'list'; limit?: number }
   | { kind: 'clear' }
   | { kind: 'get-origin' }
+  | { kind: 'get-identity' }
   | { kind: 'active-sync'; urls: SyncRequest[] };
 
 async function findPersonioTab(): Promise<chrome.tabs.Tab | null> {
@@ -26,6 +37,81 @@ async function findPersonioOrigin(): Promise<string | null> {
   const tab = await findPersonioTab();
   if (!tab?.url) return null;
   try { return new URL(tab.url).origin; } catch { return null; }
+}
+
+async function readIdentityHint(): Promise<IdentityHint> {
+  try {
+    const r = await chrome.storage.local.get(IDENTITY_KEY);
+    const v = r[IDENTITY_KEY] as IdentityHint | undefined;
+    return v ?? {};
+  } catch { return {}; }
+}
+
+async function writeIdentityHint(patch: IdentityHint): Promise<void> {
+  try {
+    const cur = await readIdentityHint();
+    const next: IdentityHint = {
+      origin: patch.origin ?? cur.origin ?? null,
+      ownEmployeeId: patch.ownEmployeeId ?? cur.ownEmployeeId ?? null,
+    };
+    await chrome.storage.local.set({ [IDENTITY_KEY]: next });
+  } catch { /* best-effort */ }
+}
+
+/**
+ * Sniff a captured request for identity hints (origin + own employee id)
+ * and persist them. Cheap — only string/regex matching on the URL plus a
+ * shallow walk of /me-style response bodies.
+ */
+async function maybePersistIdentityHint(c: CapturedRequest): Promise<void> {
+  const patch: IdentityHint = {};
+  try {
+    const u = new URL(c.url);
+    if (/personio\.(de|com)$/.test(u.hostname)) patch.origin = u.origin;
+    const m = TIMESHEET_URL_RE.exec(u.pathname);
+    if (m) patch.ownEmployeeId = m[1] ?? null;
+  } catch { /* ignore */ }
+  if (!patch.ownEmployeeId && c.bodyJson && /\/my-organization\b|\/me\b|\/current[-_]?user\b/i.test(c.url)) {
+    const id = findOwnIdInBody(c.bodyJson);
+    if (id) patch.ownEmployeeId = id;
+  }
+  if (patch.origin || patch.ownEmployeeId) await writeIdentityHint(patch);
+}
+
+/** Recursively look for a numeric `employee.id` / `id` on a /me-style body. */
+function findOwnIdInBody(v: unknown, depth = 0): string | null {
+  if (depth > 6 || v == null) return null;
+  if (Array.isArray(v)) {
+    for (const x of v) {
+      const r = findOwnIdInBody(x, depth + 1);
+      if (r) return r;
+    }
+    return null;
+  }
+  if (typeof v !== 'object') return null;
+  const o = v as Record<string, unknown>;
+  // Direct hit on common id fields.
+  for (const k of ['employee_id', 'employeeId', 'person_id', 'personId']) {
+    const id = normalizeId(o[k]);
+    if (id) return id;
+  }
+  // Nested employee/person/me/user objects.
+  for (const k of ['employee', 'person', 'me', 'user', 'current_user', 'currentUser', 'profile', 'data']) {
+    if (o[k] && typeof o[k] === 'object') {
+      const nested = o[k] as Record<string, unknown>;
+      const id = normalizeId(nested.id ?? nested.employee_id ?? nested.employeeId);
+      if (id) return id;
+      const r = findOwnIdInBody(nested, depth + 1);
+      if (r) return r;
+    }
+  }
+  return null;
+}
+
+function normalizeId(v: unknown): string | null {
+  if (typeof v === 'number' && Number.isFinite(v) && v > 0) return String(v);
+  if (typeof v === 'string' && /^\d{3,}$/.test(v)) return v;
+  return null;
 }
 
 /**
@@ -116,18 +202,31 @@ chrome.runtime.onMessage.addListener((msg: Incoming, _sender, sendResponse) => {
       switch (msg.kind) {
         case 'capture':
           await putRequest(msg.payload);
+          void maybePersistIdentityHint(msg.payload);
           sendResponse({ ok: true });
           break;
         case 'list':
           sendResponse({ ok: true, items: await listRequests(msg.limit) });
           break;
         case 'clear':
+          // Wipe IndexedDB but DON'T touch the identity hint — that's how
+          // the planner can still seed timesheet probes immediately after
+          // a cache clear, instead of returning an empty plan.
           await clearAll();
           sendResponse({ ok: true });
           break;
         case 'get-origin':
           sendResponse({ ok: true, origin: await findPersonioOrigin() });
           break;
+        case 'get-identity': {
+          const hint = await readIdentityHint();
+          // Always prefer a fresh tab-derived origin (handles tenant switch
+          // mid-session) but fall back to the persisted one.
+          const origin = (await findPersonioOrigin()) ?? hint.origin ?? null;
+          if (origin && origin !== hint.origin) await writeIdentityHint({ origin });
+          sendResponse({ ok: true, origin, ownEmployeeId: hint.ownEmployeeId ?? null });
+          break;
+        }
         case 'active-sync': {
           const tab = await findPersonioTab();
           if (tab?.id == null) {

@@ -14,6 +14,10 @@ type RequestMap = {
   list: { req: { limit?: number }; res: { items: CapturedRequest[] } };
   clear: { req: Record<string, never>; res: Record<string, never> };
   'get-origin': { req: Record<string, never>; res: { origin: string | null } };
+  'get-identity': {
+    req: Record<string, never>;
+    res: { origin: string | null; ownEmployeeId: string | null };
+  };
   'active-sync': { req: { urls: SyncRequest[] }; res: { result: SyncResult } };
 };
 

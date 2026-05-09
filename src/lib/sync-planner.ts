@@ -30,10 +30,10 @@ export function planSyncUrls(
   items: CapturedRequest[],
   from: string,
   to: string,
-  opts: { seedOrigin?: string | null } = {},
+  opts: { seedOrigin?: string | null; ownEmployeeIdHint?: string | null } = {},
 ): SyncRequest[] {
   const months = monthWindows(from, to);
-  const ctx = analyzeHistory(items, opts.seedOrigin ?? null);
+  const ctx = analyzeHistory(items, opts.seedOrigin ?? null, opts.ownEmployeeIdHint ?? null);
   const templates = extractTimesheetTemplates(items);
   const out: SyncRequest[] = [];
   const seen = new Set<string>();
@@ -93,7 +93,11 @@ type HistoryContext = {
   candidateEmployees: Set<string>;
 };
 
-function analyzeHistory(items: CapturedRequest[], seedOrigin: string | null): HistoryContext {
+function analyzeHistory(
+  items: CapturedRequest[],
+  seedOrigin: string | null,
+  ownEmployeeIdHint: string | null,
+): HistoryContext {
   let origin: string | null = null;
   let ownEmployeeId: string | null = null;
   const confirmed = new Set<string>();
@@ -137,6 +141,10 @@ function analyzeHistory(items: CapturedRequest[], seedOrigin: string | null): Hi
   // chrome.tabs.query) even before we've seen any captures — use that so
   // first-run sync can immediately probe the well-known endpoints.
   if (!origin && seedOrigin) origin = seedOrigin;
+  // Fallback: caller persists the last-known own employee id in
+  // chrome.storage.local so we can still build seeded probes after the
+  // user clears the cache (which only wipes IndexedDB).
+  if (!ownEmployeeId && ownEmployeeIdHint) ownEmployeeId = ownEmployeeIdHint;
   const dead = computeDeadEndpoints(failureLedger, lastFailureAt, confirmed);
   const allowed = collectAllowedEmployeeIds(items);
   const candidate = allowed.size > 0 ? allowed : collectEmployeeIds(items);
