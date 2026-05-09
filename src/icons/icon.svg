@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <rect x="4" y="4" width="120" height="120" rx="26" ry="26" fill="#0a0a0a"/>
+
+  <!--
+    Helvetica Bold "P" with extended stem, vectorized via potrace.
+    Source viewBox: 803.6 × 1291 (aspect 0.622).
+    Scale 0.0589 → glyph is ~47 × 76 in icon space.
+    Centered: translate(40, 26) → spans (40..87, 26..102).
+  -->
+  <g fill="#facc15" transform="translate(40 26) scale(0.0589)">
+    <g transform="translate(0,1291) scale(0.1,-0.1)">
+      <path d="M0 6455 l0 -6455 730 0 730 0 0 3350 0 3349 1873 4 c1701 3 1885 5 2017 20 678 81 1161 263 1572 589 420 334 791 905 968 1489 208 690 193 1558 -40 2233 -348 1010 -1249 1690 -2435 1840 -266 34 -410 36 -2912 36 l-2503 0 0 -6455z m4640 5195 c845 -47 1340 -270 1650 -745 185 -284 270 -629 270 -1095 0 -487 -95 -860 -292 -1148 -218 -317 -661 -563 -1202 -667 -317 -61 -235 -58 -1993 -62 l-1613 -4 0 1866 0 1865 1498 0 c889 0 1572 -4 1682 -10z"/>
+    </g>
+  </g>
+
+  <!--
+    Three ascending bars tucked into the empty space under the P's bowl,
+    right of the stem. Stem ends ~x=49, bowl bottom ~y=70, foot y=102.
+  -->
+  <g fill="#facc15">
+    <rect x="54" y="90" width="8" height="12" rx="1.2"/>
+    <rect x="65" y="82" width="8" height="20" rx="1.2"/>
+    <rect x="76" y="72" width="8" height="30" rx="1.2"/>
+  </g>
+</svg>
