@@ -26,6 +26,10 @@ export default defineConfig({
         // Bundle sidepanel.html (loaded via iframe from web_accessible_resources)
         // so its CSS + TS get processed by Vite.
         sidepanel: resolve(__dirname, 'src/sidepanel/sidepanel.html'),
+        // Dedicated report extension page — needed because blob: URLs
+        // enforce a CSP that blocks all scripts (so the print button
+        // cannot be wired up there).
+        report: resolve(__dirname, 'src/report/report.html'),
       },
     },
   },

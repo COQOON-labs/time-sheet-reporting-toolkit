@@ -21,7 +21,7 @@ import { escapeHtml, fmtHours, fmtOvertime, download } from '../lib/format.js';
 import { BRAND, BRAND_RGBA_18 } from '../lib/constants.js';
 import { state, setState } from './state.js';
 import { $ } from './dom.js';
-import { buildReportHtml } from './report-html.js';
+import type { ReportPayload } from './report-html.js';
 import { wireSync, maybeAutoSync } from './sync-controller.js';
 
 export { onSyncDoneRegister, onRefreshStateRegister } from './sync-controller.js';
@@ -336,13 +336,13 @@ export function wireDashboard(opts: {
     download(exportEntriesCsv(filtered), `time-entries-${range.from}_${range.to}.csv`, 'text/csv');
   });
 
-  els.dashReport.addEventListener('click', () => {
+  els.dashReport.addEventListener('click', async () => {
     const range = currentRange();
     const filtered = filterEntries(
       state.timeEntries, range,
       els.dashEmployee.value, els.dashProject.value, els.dashSearch.value,
     );
-    const html = buildReportHtml({
+    const payload: ReportPayload = {
       range,
       filters: {
         employee: els.dashEmployee.value || 'All',
@@ -350,18 +350,21 @@ export function wireDashboard(opts: {
         search: els.dashSearch.value || '',
       },
       entries: filtered,
-    });
-    // Use a Blob URL instead of a `data:` URL: Blob URLs are scoped to the
-    // creating origin, never appear in the URL bar / history with the data
-    // payload, and don't bloat referrer logs.
-    const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
-    if (typeof chrome !== 'undefined' && chrome.tabs?.create) {
+    };
+    // Hand the payload to the dedicated report extension page via
+    // chrome.storage.session under a one-shot UUID key. session storage is
+    // wiped at browser close and the report page deletes its key after
+    // reading. We avoid `blob:` URLs here because their CSP blocks any
+    // script (so a print button cannot be wired up).
+    const key = (crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    const storageKey = `report:${key}`;
+    await chrome.storage.session.set({ [storageKey]: payload });
+    const url = chrome.runtime.getURL(`src/report/report.html?key=${encodeURIComponent(key)}`);
+    if (chrome.tabs?.create) {
       chrome.tabs.create({ url });
     } else {
       window.open(url, '_blank');
     }
-    // Revoke shortly after; the new tab has already loaded the resource.
-    setTimeout(() => URL.revokeObjectURL(url), 60_000);
   });
 
   wireSync({

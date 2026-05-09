@@ -46,6 +46,7 @@
     {
       "resources": [
         "src/sidepanel/sidepanel.html",
+        "src/report/report.html",
         "assets/*"
       ],
       "matches": ["*://*.personio.de/*", "*://*.personio.com/*"]
