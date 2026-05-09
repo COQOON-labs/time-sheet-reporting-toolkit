@@ -42,6 +42,7 @@ const els = {
   status: $('#status') as HTMLParagraphElement,
   refresh: $('#refresh') as HTMLButtonElement,
   clear: $('#clear') as HTMLButtonElement,
+  dashClearCache: $('#dash-clear-cache') as HTMLButtonElement,
   dashDebug: $('#dash-debug') as HTMLButtonElement,
   tabs: document.querySelectorAll<HTMLButtonElement>('.tab'),
   panels: document.querySelectorAll<HTMLElement>('.tab-panel'),
@@ -136,6 +137,17 @@ els.clear.addEventListener('click', async () => {
   await refresh();
 });
 
+els.dashClearCache.addEventListener('click', async () => {
+  if (!confirm(
+    'Delete every captured request and all aggregated time entries from this browser?\n\n' +
+    'This only affects your local cache — your Personio data is untouched. ' +
+    'Next sync will re-fetch from Personio.',
+  )) return;
+  await send('clear');
+  await refresh();
+  els.status.textContent = 'Cache cleared.';
+});
+
 els.dashDebug.addEventListener('click', () => {
   const log = buildDebugLog(state.allItems);
   const range = currentRange();
@@ -158,7 +170,7 @@ els.dashDebug.addEventListener('click', () => {
 
 // ---------- Wire dashboard + initial load ----------
 
-const initialAuto = readPrefBool(STORAGE_KEYS.autoSync, false);
+const initialAuto = readPrefBool(STORAGE_KEYS.autoSync, true);
 wireDashboard({
   autoSyncInitial: initialAuto,
   onAutoSyncChange: (checked) => writePrefBool(STORAGE_KEYS.autoSync, checked),
