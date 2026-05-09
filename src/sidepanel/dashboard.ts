@@ -84,12 +84,20 @@ export function currentRange(): DateRange {
     case 'last-6-months': return { from: monthStart(y, m - 5), to: today };
     case 'this-year': return { from: `${y}-01-01`, to: today };
     case 'all': {
+      // Personio (the company) was founded in 2012; their oldest tenant
+      // data realistically starts ~2015. We deliberately do NOT clamp
+      // `from` to the earliest already-captured date here, because on a
+      // first-run sync that would collapse "All" to an empty range and
+      // the user would have to keep clicking sync to walk further back
+      // in time. Always reach back to 2015-01-01 so a single Sync covers
+      // the full plausible history; the planner's month-window expansion
+      // will skip months Personio responds to with 4xx.
+      const EARLIEST = '2015-01-01';
       const dates: string[] = [];
       for (const e of state.timeEntries) dates.push(e.date);
       for (const o of state.dailyOvertime) dates.push(o.date);
-      if (dates.length === 0) return { from: '1970-01-01', to: today };
-      let min = dates[0]!;
-      let max = dates[0]!;
+      let min = EARLIEST;
+      let max = today;
       for (const d of dates) {
         if (d < min) min = d;
         if (d > max) max = d;
