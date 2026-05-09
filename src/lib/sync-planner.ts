@@ -85,6 +85,10 @@ type HistoryContext = {
   origin: string | null;
   ownEmployeeId: string | null;
   deadEndpoints: Set<string>;
+  /** Path-only URLs that returned 2xx in any prior sync — once we've seen
+   *  one succeed, we no longer treat it as a speculative probe (so failures
+   *  on a later sync DO surface as real errors). */
+  confirmedEndpoints: Set<string>;
   forbiddenEmployees: Set<string>;
   candidateEmployees: Set<string>;
 };
@@ -93,6 +97,7 @@ function analyzeHistory(items: CapturedRequest[], seedOrigin: string | null): Hi
   let origin: string | null = null;
   let ownEmployeeId: string | null = null;
   const dead = new Set<string>();
+  const confirmed = new Set<string>();
   const forbidden = new Set<string>();
   for (const it of items) {
     try {
@@ -105,7 +110,9 @@ function analyzeHistory(items: CapturedRequest[], seedOrigin: string | null): Hi
         if (m) ownEmployeeId = m[1]!;
       }
     } catch { /* ignore */ }
-    if (it.status >= 400 && it.status < 500) dead.add(it.url.split('?')[0]!);
+    const pathOnly = it.url.split('?')[0]!;
+    if (it.status >= 200 && it.status < 300) confirmed.add(pathOnly);
+    if (it.status >= 400 && it.status < 500) dead.add(pathOnly);
     if (it.status === 403) {
       const m = TIMESHEET_URL_RE.exec(it.url);
       if (m) forbidden.add(m[1]!);
@@ -118,12 +125,16 @@ function analyzeHistory(items: CapturedRequest[], seedOrigin: string | null): Hi
   // chrome.tabs.query) even before we've seen any captures — use that so
   // first-run sync can immediately probe the well-known endpoints.
   if (!origin && seedOrigin) origin = seedOrigin;
+  // A confirmed endpoint can't also be "dead" — a transient 404 followed by
+  // a 200 means the route is alive (e.g. tenant created the resource).
+  for (const p of confirmed) dead.delete(p);
   const allowed = collectAllowedEmployeeIds(items);
   const candidate = allowed.size > 0 ? allowed : collectEmployeeIds(items);
   if (ownEmployeeId) candidate.add(ownEmployeeId);
   return {
     origin, ownEmployeeId,
-    deadEndpoints: dead, forbiddenEmployees: forbidden,
+    deadEndpoints: dead, confirmedEndpoints: confirmed,
+    forbiddenEmployees: forbidden,
     candidateEmployees: candidate,
   };
 }
@@ -223,15 +234,19 @@ function expandOverEmployees(
 function buildProbeRequests(ctx: HistoryContext): SyncRequest[] {
   const out: SyncRequest[] = [];
   if (!ctx.origin) return out;
-  const { origin, deadEndpoints, ownEmployeeId } = ctx;
+  const { origin, deadEndpoints, confirmedEndpoints, ownEmployeeId } = ctx;
   const isDead = (url: string): boolean => deadEndpoints.has(url.split('?')[0]!);
+  // A URL that has previously returned 2xx is no longer speculative — emit
+  // it as a regular request so failures bubble up properly to the user.
+  const probeFlag = (url: string): { probe: true } | Record<string, never> =>
+    confirmedEndpoints.has(url.split('?')[0]!) ? {} : { probe: true };
 
   if (ownEmployeeId) {
     const gqlUrl = `${origin}/graphql?op=TM_TrackableProjects_v2025091101`;
     out.push({
       url: gqlUrl,
       method: 'POST',
-      probe: true,
+      ...probeFlag(gqlUrl),
       body: {
         operationName: 'TM_TrackableProjects_v2025091101',
         query: 'TM_TrackableProjects_v2025091101',
@@ -245,7 +260,7 @@ function buildProbeRequests(ctx: HistoryContext): SyncRequest[] {
     `${origin}/svc/attendance-bff/v1/projects`,
     `${origin}/svc/attendance-api/v1/projects`,
   ]) {
-    if (!isDead(p)) out.push({ url: p, method: 'GET', probe: true });
+    if (!isDead(p)) out.push({ url: p, method: 'GET', ...probeFlag(p) });
   }
 
   const peopleListUrl = `${origin}/people-list/bff/data`;
@@ -253,13 +268,13 @@ function buildProbeRequests(ctx: HistoryContext): SyncRequest[] {
     out.push({
       url: peopleListUrl,
       method: 'POST',
-      probe: true,
+      ...probeFlag(peopleListUrl),
       body: { filters: {}, page: 0, pageSize: 1000 },
     });
   }
 
   const orgUrl = `${origin}/platform/dashboard/api/v1/my-organization`;
-  if (!isDead(orgUrl)) out.push({ url: orgUrl, method: 'GET', probe: true });
+  if (!isDead(orgUrl)) out.push({ url: orgUrl, method: 'GET', ...probeFlag(orgUrl) });
 
   return out;
 }

@@ -103,10 +103,14 @@ export async function runSync(opts: { silent?: boolean } = {}): Promise<void> {
     setState({ lastSyncResult: r, lastAutoSyncAt: Date.now() });
     // Probe outcomes are tracked in details[].probe but not in r.failed.
     const probeMisses = r.details.filter((d) => d.probe && !d.ok).length;
-    const probeNote = probeMisses > 0 ? ` (· ${probeMisses} optional probe${probeMisses === 1 ? '' : 's'} skipped)` : '';
+    const learned = r.details.filter((d) => d.probe && d.ok).length;
+    const notes: string[] = [];
+    if (learned > 0) notes.push(`learned ${learned} new endpoint${learned === 1 ? '' : 's'}`);
+    if (probeMisses > 0) notes.push(`${probeMisses} optional probe${probeMisses === 1 ? '' : 's'} skipped`);
+    const noteSuffix = notes.length ? ` (· ${notes.join(', ')})` : '';
     els.syncStatus.style.color = r.failed > 0 ? 'var(--amber)' : 'var(--green)';
     els.syncStatus.textContent =
-      `Sync done: ${r.fetched} ok, ${r.failed} failed${probeNote}` +
+      `Sync done: ${r.fetched} ok, ${r.failed} failed${noteSuffix}` +
       (r.errors.length ? ` — first error: ${r.errors[0]}` : '');
     syncDoneHandler();
   } catch (err) {
