@@ -29,13 +29,21 @@ async function findPersonioOrigin(): Promise<string | null> {
 }
 
 /**
- * Resolve the (possibly bundler-rewritten) content-script file paths from
- * the runtime manifest, so chrome.scripting.executeScript injects exactly
- * what the regular auto-injection would have loaded.
+ * Resolve content-script entries from the runtime manifest, grouped by
+ * execution world so chrome.scripting.executeScript injects each into the
+ * same world as the manifest auto-injection would have.
  */
-function contentScriptFiles(): string[] {
+function contentScriptEntries(): Array<{ files: string[]; world: chrome.scripting.ExecutionWorld }> {
   const cs = chrome.runtime.getManifest().content_scripts ?? [];
-  return cs.flatMap((s) => s.js ?? []);
+  const out: Array<{ files: string[]; world: chrome.scripting.ExecutionWorld }> = [];
+  for (const s of cs) {
+    const files = s.js ?? [];
+    if (files.length === 0) continue;
+    // chrome.types: `world` is "ISOLATED" | "MAIN" | undefined.
+    const world = (s as { world?: chrome.scripting.ExecutionWorld }).world ?? 'ISOLATED';
+    out.push({ files, world });
+  }
+  return out;
 }
 
 /**
@@ -61,21 +69,44 @@ async function sendToContentScript(
     if (!noReceiver) throw err;
     // Content script missing — try to inject and retry once.
     try {
-      const files = contentScriptFiles();
-      if (files.length === 0) throw new Error('manifest lists no content scripts');
-      await chrome.scripting.executeScript({ target: { tabId }, files });
+      const entries = contentScriptEntries();
+      if (entries.length === 0) throw new Error('manifest lists no content scripts');
+      // Inject each manifest entry into its declared world. Failures of
+      // individual entries (e.g. MAIN-world inject.ts on a hardened page)
+      // shouldn't prevent the ISOLATED-world content.ts from registering
+      // its message listener — gather but don't rethrow per-entry.
+      const errors: string[] = [];
+      for (const { files, world } of entries) {
+        try {
+          await chrome.scripting.executeScript({ target: { tabId }, files, world });
+        } catch (e) {
+          errors.push(`${world}: ${String(e)}`);
+        }
+      }
+      if (errors.length === entries.length) {
+        throw new Error(errors.join('; '));
+      }
     } catch (injectErr) {
       throw new Error(
         `Could not reach Personio tab. Refresh the Personio page and try again. (${String(injectErr)})`,
       );
     }
-    try {
-      return await send();
-    } catch (retryErr) {
-      throw new Error(
-        `Could not reach Personio tab after injecting helper. Refresh the Personio page and try again. (${String(retryErr)})`,
-      );
+    // The bundled content-script loader uses a dynamic import() to load
+    // the real module — listener registration happens *after* injection
+    // resolves. Poll-retry the message a few times before giving up.
+    const RETRY_DELAYS_MS = [100, 250, 500, 1000];
+    let retryErr: unknown = null;
+    for (const delay of RETRY_DELAYS_MS) {
+      await new Promise((r) => setTimeout(r, delay));
+      try {
+        return await send();
+      } catch (e) {
+        retryErr = e;
+      }
     }
+    throw new Error(
+      `Could not reach Personio tab after injecting helper. Refresh the Personio page and try again. (${String(retryErr)})`,
+    );
   }
 }
 
