@@ -46,6 +46,7 @@
     {
       "resources": [
         "src/sidepanel/sidepanel.html",
+        "print-helper.js",
         "assets/*"
       ],
       "matches": ["*://*.personio.de/*", "*://*.personio.com/*"]
