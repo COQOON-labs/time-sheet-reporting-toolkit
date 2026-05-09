@@ -96,9 +96,15 @@ type HistoryContext = {
 function analyzeHistory(items: CapturedRequest[], seedOrigin: string | null): HistoryContext {
   let origin: string | null = null;
   let ownEmployeeId: string | null = null;
-  const dead = new Set<string>();
   const confirmed = new Set<string>();
   const forbidden = new Set<string>();
+  // Per-path failure ledger: only mark a path "dead" once we've seen a
+  // sustained pattern of client-error responses, not after a single 4xx
+  // (which can be transient — auth flake, race, deploy). 5xx and network
+  // errors (status 0) are explicitly NOT counted as evidence-of-dead, since
+  // they signal a service problem rather than "this route doesn't exist".
+  const failureLedger = new Map<string, number[]>(); // pathOnly -> failure timestamps (ms)
+  const lastFailureAt = new Map<string, number>();
   for (const it of items) {
     try {
       const u = new URL(it.url);
@@ -112,7 +118,13 @@ function analyzeHistory(items: CapturedRequest[], seedOrigin: string | null): Hi
     } catch { /* ignore */ }
     const pathOnly = it.url.split('?')[0]!;
     if (it.status >= 200 && it.status < 300) confirmed.add(pathOnly);
-    if (it.status >= 400 && it.status < 500) dead.add(pathOnly);
+    if (it.status >= 400 && it.status < 500) {
+      const arr = failureLedger.get(pathOnly) ?? [];
+      arr.push(it.capturedAt);
+      failureLedger.set(pathOnly, arr);
+      const prev = lastFailureAt.get(pathOnly) ?? 0;
+      if (it.capturedAt > prev) lastFailureAt.set(pathOnly, it.capturedAt);
+    }
     if (it.status === 403) {
       const m = TIMESHEET_URL_RE.exec(it.url);
       if (m) forbidden.add(m[1]!);
@@ -125,9 +137,7 @@ function analyzeHistory(items: CapturedRequest[], seedOrigin: string | null): Hi
   // chrome.tabs.query) even before we've seen any captures — use that so
   // first-run sync can immediately probe the well-known endpoints.
   if (!origin && seedOrigin) origin = seedOrigin;
-  // A confirmed endpoint can't also be "dead" — a transient 404 followed by
-  // a 200 means the route is alive (e.g. tenant created the resource).
-  for (const p of confirmed) dead.delete(p);
+  const dead = computeDeadEndpoints(failureLedger, lastFailureAt, confirmed);
   const allowed = collectAllowedEmployeeIds(items);
   const candidate = allowed.size > 0 ? allowed : collectEmployeeIds(items);
   if (ownEmployeeId) candidate.add(ownEmployeeId);
@@ -137,6 +147,38 @@ function analyzeHistory(items: CapturedRequest[], seedOrigin: string | null): Hi
     forbiddenEmployees: forbidden,
     candidateEmployees: candidate,
   };
+}
+
+/** Window over which we count consecutive client errors before declaring
+ *  a path dead. A single isolated 4xx isn't enough. */
+const DEAD_FAILURE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+/** How many client errors inside the window before we stop probing. */
+const DEAD_FAILURE_THRESHOLD = 3;
+/** After this long with no fresh failure, give the path one more chance —
+ *  Personio occasionally rolls out new BFF versions and routes that 404'd
+ *  yesterday may serve 200 today. */
+const DEAD_REPROBE_AFTER_MS = 14 * 24 * 60 * 60 * 1000;
+
+function computeDeadEndpoints(
+  failureLedger: Map<string, number[]>,
+  lastFailureAt: Map<string, number>,
+  confirmed: Set<string>,
+): Set<string> {
+  const now = Date.now();
+  const dead = new Set<string>();
+  for (const [path, failures] of failureLedger) {
+    // A path that has ever returned 2xx is alive. A transient 4xx in its
+    // history doesn't undo that.
+    if (confirmed.has(path)) continue;
+    const recent = failures.filter((t) => now - t <= DEAD_FAILURE_WINDOW_MS);
+    if (recent.length < DEAD_FAILURE_THRESHOLD) continue;
+    // Time-based re-probe: if we haven't seen a fresh failure in a while,
+    // give it another shot.
+    const last = lastFailureAt.get(path) ?? 0;
+    if (now - last > DEAD_REPROBE_AFTER_MS) continue;
+    dead.add(path);
+  }
+  return dead;
 }
 
 function findOwnIdInBody(body: unknown): string | null {

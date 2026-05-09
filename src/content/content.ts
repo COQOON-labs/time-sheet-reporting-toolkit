@@ -37,29 +37,39 @@ chrome.runtime.onMessage.addListener((msg: { kind: string; urls?: SyncRequest[] 
       const raw = toSyncRequest(item);
       const req = { ...raw, method: raw.method ?? ('GET' as const) };
       const url = req.url;
+      const headers: Record<string, string> = {
+        accept: 'application/json, */*',
+        ...(req.headers ?? {}),
+      };
+      // Personio's Athena routes require the XSRF token from the cookie
+      // for any state-changing or authenticated call (incl. /search GETs).
+      if (!headers['x-athena-xsrf-token']) {
+        const m = document.cookie.match(/(?:^|;\s*)ATHENA-XSRF-TOKEN=([^;]+)/);
+        if (m) headers['x-athena-xsrf-token'] = decodeURIComponent(m[1]!);
+      }
+      let body: BodyInit | undefined;
+      if (req.method === 'POST' && req.body !== undefined) {
+        headers['content-type'] = headers['content-type'] ?? 'application/json';
+        body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+      }
+      // One retry with short backoff for transient infrastructure failures
+      // (5xx, network blip). 4xx is NOT retried — that's a real client/auth
+      // problem and a retry won't change the answer.
+      let res: Response | null = null;
+      let lastErr: unknown = null;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          res = await fetch(url, { method: req.method, credentials: 'include', cache: 'no-store', headers, body });
+          if (res.status < 500) break;
+          lastErr = new Error(`HTTP ${res.status}`);
+        } catch (err) {
+          lastErr = err;
+          res = null;
+        }
+        if (attempt === 0) await new Promise((r) => setTimeout(r, 750));
+      }
       try {
-        const headers: Record<string, string> = {
-          accept: 'application/json, */*',
-          ...(req.headers ?? {}),
-        };
-        // Personio's Athena routes require the XSRF token from the cookie
-        // for any state-changing or authenticated call (incl. /search GETs).
-        if (!headers['x-athena-xsrf-token']) {
-          const m = document.cookie.match(/(?:^|;\s*)ATHENA-XSRF-TOKEN=([^;]+)/);
-          if (m) headers['x-athena-xsrf-token'] = decodeURIComponent(m[1]!);
-        }
-        let body: BodyInit | undefined;
-        if (req.method === 'POST' && req.body !== undefined) {
-          headers['content-type'] = headers['content-type'] ?? 'application/json';
-          body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
-        }
-        const res = await fetch(url, {
-          method: req.method,
-          credentials: 'include',
-          cache: 'no-store',
-          headers,
-          body,
-        });
+        if (!res) throw lastErr ?? new Error('fetch failed');
         const text = await res.text();
         const bytes = utf8Bytes(text);
         let bodyJson: unknown = null;
